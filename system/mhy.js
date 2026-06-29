@@ -211,8 +211,10 @@ class mhy {
           hk4e_cn国服原神
           hkrpg_cn国服星铁
           nap_cn国服绝区零
+          bh3_cn国服崩三
           */
-      const game_list = [ "hk4e_cn", "hkrpg_cn", "nap_cn" ];
+      const game_list = ['hk4e_cn', 'hkrpg_cn', 'nap_cn', 'bh3_cn'];
+
       for (const key in data_) {
         const headers = this.getHeaders(e, data_[key][1]);
         let res = await api(e, { type: "GameRoles", headers: headers });

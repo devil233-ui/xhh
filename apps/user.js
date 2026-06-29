@@ -23,6 +23,7 @@ export class user extends plugin {
             dsc: "",
             event: "message",
             handler: [
+<<<<<<< Updated upstream
 {
                 key: "mys.req.err",
                 fn: "mysReqErrHandler",
@@ -31,12 +32,27 @@ export class user extends plugin {
             priority: -666,
             rule: [
 {
+=======
+                {
+                    key: "mys.req.err",
+                    fn: "mysReqErrHandler",
+                },
+            ],
+            priority: -666,
+            rule: [
+                {
+>>>>>>> Stashed changes
                     reg: "^#?(删除|绑定)*设备(.*)$",
                     fnc: "fp",
                 },
                 {
+<<<<<<< Updated upstream
                     reg: "^#?扫码(登录|绑定|登陆)$",
                     fnc: "sm",
+=======
+                    reg: '^#?扫码(登录|绑定|登陆)$',
+                    fnc: 'sm',
+>>>>>>> Stashed changes
                 },
                 {
                     reg: "^#?(绑定)?设备(绑定)?帮助$",
@@ -158,7 +174,7 @@ export class user extends plugin {
 
         const sm_url = res.data.url;
         let ticket = res.data.ticket
-        
+
         let img = segment.image(
             (await QR.toDataURL(sm_url)).replace(
                 "data:image/png;base64,",
@@ -180,14 +196,18 @@ export class user extends plugin {
         await sleep(2000);
 
         url = "https://passport-api.mihoyo.com/account/ma-cn-passport/app/queryQRLoginStatus"; //查询二维码状态
+<<<<<<< Updated upstream
         body = {ticket};
+=======
+        body = { ticket };
+>>>>>>> Stashed changes
         let zt;
         now_time = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
         await redis.set(`xhh_sm:${e.user_id}_CD`, now_time, {
             EX: CD
         }); //进入CD
-        
-      
+
+
         for (var n = 1; n < 150; n++) {
             await sleep(1000);
             res = await fetch(url, {
@@ -195,8 +215,13 @@ export class user extends plugin {
                 headers,
                 body: JSON.stringify(body),
             }).then(res => res.json());
+<<<<<<< Updated upstream
             
                             
+=======
+
+
+>>>>>>> Stashed changes
             if (res.retcode != 0) return e.reply("二维码已过期~", true);
             if (res.data.status == "Init") continue;
             if (res.data.status == "Scanned" && !zt) {
@@ -204,22 +229,26 @@ export class user extends plugin {
                 recallMsg(e, re.message_id);
                 e.reply("二维码已被扫，请确认登录~", true);
             }
+<<<<<<< Updated upstream
             
+=======
+
+>>>>>>> Stashed changes
             if (res.data.status == "Confirmed") {
 
                 //SToken
                 const SToken = (
-                  res.data.tokens.find(i => i.name === "stoken" || i.name === "stoken_v2") ||
-                  res.data.tokens[0]
-                  )?.token
+                    res.data.tokens.find(i => i.name === "stoken" || i.name === "stoken_v2") ||
+                    res.data.tokens[0]
+                )?.token
                 //stuid
                 const stuid = res.data.user_info.aid || res.data.user_info.uid || res.data.user_info.account_id
                 //mid
                 const mid = res.data.user_info.mid;
-                
+
                 //用SToken获取cookie
                 const ck = `stuid=${stuid};stoken=${SToken};mid=${mid};`;
-                
+
                 headers.Cookie = ck;
                 const {
                     sendMsg,
@@ -240,8 +269,13 @@ export class user extends plugin {
                     hk4e_cn国服原神
                     hkrpg_cn国服星铁
                     nap_cn国服绝区零
+                    bh3_cn国服崩坏3
                     */
+<<<<<<< Updated upstream
                     const game_list = [ "hk4e_cn", "hkrpg_cn", "nap_cn" ];
+=======
+                    const game_list = ['hk4e_cn', 'hkrpg_cn', 'nap_cn', 'bh3_cn'];
+>>>>>>> Stashed changes
                     res.data.list.map(v => {
                         if (game_list.includes(v.game_biz)) {
                             data_[v.game_uid] = {
@@ -312,7 +346,7 @@ export class user extends plugin {
         const path = `./plugins/xhh/data/Stoken/${e.user_id}.yaml`;
         let data;
         if (!Array.isArray(data_)) data = yaml.get(path);
-        else((data = data_[1]), (data_ = data_[0]));
+        else ((data = data_[1]), (data_ = data_[0]));
         for (let k in data_) {
             const [ SToken, ck ] = data_[k];
             const headers = mhy.getHeaders(e, ck);
@@ -574,7 +608,11 @@ export class user extends plugin {
         if (!config().Verification_API_KEY) return false
         let url = "http://api.ttocr.com/api/points?appkey=" + config().Verification_API_KEY
         let data = await (await fetch(url)).json()
+<<<<<<< Updated upstream
         if (data.msg == "查询成功" && data.points) return e.reply(`剩余可用次数：约${Math.floor(data.points/10)}次`)
+=======
+        if (data.msg == "查询成功" && data.points) return e.reply(`剩余可用次数：约${Math.floor(data.points / 10)}次`)
+>>>>>>> Stashed changes
         else return e.reply(data.msg)
     }
 
