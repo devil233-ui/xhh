@@ -10,6 +10,47 @@ const name_list = {
   by: "崩缘",
   xbgd: "星布谷地"
 }
+
+const videoApiHosts = [
+  "https://bbs-api.miyoushe.com",
+  "https://bbs-api.mihoyo.com",
+]
+
+// 米游社接口偶发连接超时；每个账号独立失败，避免中断整轮播报。
+async function fetchVideoFeed(uid, name) {
+  let lastError
+  for (const host of videoApiHosts) {
+    const url = `${host}/post/wapi/userPost?size=20&uid=${uid}`
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Referer: "https://www.miyoushe.com/",
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        },
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`)
+      }
+      const payload = await response.json()
+      if (!Array.isArray(payload?.data?.list)) {
+        throw new Error("响应缺少 data.list")
+      }
+      return payload
+    } catch (error) {
+      lastError = error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  const cause = lastError?.cause?.code || lastError?.code || lastError?.message || "未知错误"
+  logger.error(`[小花火米哈游视频] ${name} 请求失败：${cause}`)
+  return null
+}
+
 //手动触发，只回复当前聊天
 export class video extends plugin {
   constructor(e) {
@@ -70,7 +111,6 @@ async function vid(e) {
     vid_url,
     res,
     vod_list,
-    url,
     name,
     ti,
     msgs = [],
@@ -82,8 +122,8 @@ async function vid(e) {
     let msg;
     //游戏名字
     name = name_list[i];
-    url = "https://bbs-api.miyoushe.com/post/wapi/userPost?size=20&uid=" + urls[i];
-    res = await fetch(url).then(res => res.json());
+    res = await fetchVideoFeed(urls[i], name);
+    if (!res) continue;
     list = res.data.list;
     ti = await redis.get(`xhh_vid:${i}`);
     //遍历最新发的20个帖子
