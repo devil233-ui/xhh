@@ -7,7 +7,8 @@ import {
     recallMsg,
     makeForwardMsg,
     api,
-    config
+    config,
+    pluginPriority
 } from "#xhh";
 import YAML from "yaml";
 import fs from "fs";
@@ -16,6 +17,13 @@ import {
     Restart
 } from "../../other/restart.js";
 
+const BH3_LEGACY_REGIONS = ["android01", "ios01", "pc01", "bb01", "yyb01", "hun01", "hun02"];
+
+function isBh3Role(entry = {}) {
+    if (entry.game_biz) return entry.game_biz === "bh3_cn";
+    return BH3_LEGACY_REGIONS.includes(entry.region || "");
+}
+
 export class user extends plugin {
     constructor(e) {
         super({
@@ -23,36 +31,20 @@ export class user extends plugin {
             dsc: "",
             event: "message",
             handler: [
-<<<<<<< Updated upstream
-{
-                key: "mys.req.err",
-                fn: "mysReqErrHandler",
-            }, 
-],
-            priority: -666,
-            rule: [
-{
-=======
                 {
                     key: "mys.req.err",
                     fn: "mysReqErrHandler",
                 },
             ],
-            priority: -666,
+            priority: pluginPriority("user", -666),
             rule: [
                 {
->>>>>>> Stashed changes
                     reg: "^#?(删除|绑定)*设备(.*)$",
                     fnc: "fp",
                 },
                 {
-<<<<<<< Updated upstream
                     reg: "^#?扫码(登录|绑定|登陆)$",
                     fnc: "sm",
-=======
-                    reg: '^#?扫码(登录|绑定|登陆)$',
-                    fnc: 'sm',
->>>>>>> Stashed changes
                 },
                 {
                     reg: "^#?(绑定)?设备(绑定)?帮助$",
@@ -196,11 +188,7 @@ export class user extends plugin {
         await sleep(2000);
 
         url = "https://passport-api.mihoyo.com/account/ma-cn-passport/app/queryQRLoginStatus"; //查询二维码状态
-<<<<<<< Updated upstream
         body = {ticket};
-=======
-        body = { ticket };
->>>>>>> Stashed changes
         let zt;
         now_time = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
         await redis.set(`xhh_sm:${e.user_id}_CD`, now_time, {
@@ -215,13 +203,6 @@ export class user extends plugin {
                 headers,
                 body: JSON.stringify(body),
             }).then(res => res.json());
-<<<<<<< Updated upstream
-            
-                            
-=======
-
-
->>>>>>> Stashed changes
             if (res.retcode != 0) return e.reply("二维码已过期~", true);
             if (res.data.status == "Init") continue;
             if (res.data.status == "Scanned" && !zt) {
@@ -229,11 +210,6 @@ export class user extends plugin {
                 recallMsg(e, re.message_id);
                 e.reply("二维码已被扫，请确认登录~", true);
             }
-<<<<<<< Updated upstream
-            
-=======
-
->>>>>>> Stashed changes
             if (res.data.status == "Confirmed") {
 
                 //SToken
@@ -271,11 +247,7 @@ export class user extends plugin {
                     nap_cn国服绝区零
                     bh3_cn国服崩坏3
                     */
-<<<<<<< Updated upstream
-                    const game_list = [ "hk4e_cn", "hkrpg_cn", "nap_cn" ];
-=======
-                    const game_list = ['hk4e_cn', 'hkrpg_cn', 'nap_cn', 'bh3_cn'];
->>>>>>> Stashed changes
+                    const game_list = [ "hk4e_cn", "hkrpg_cn", "nap_cn", "bh3_cn" ];
                     res.data.list.map(v => {
                         if (game_list.includes(v.game_biz)) {
                             data_[v.game_uid] = {
@@ -301,6 +273,8 @@ export class user extends plugin {
                         }
                         await this.process_files(yaml_url, data_);
                     }
+                    const bh3BindInfo = await this.prepareBh3BindInfo(e, data_);
+                    if (bh3BindInfo) sendMsg.push(bh3BindInfo);
                 }
                 if (e.no_reply) e.reply = e.no_reply;
                 if (sendMsg.length < 2) e.reply(sendMsg)
@@ -390,6 +364,28 @@ export class user extends plugin {
             }
             fs.writeFileSync(yaml_url, YAML.stringify(_data_), "utf-8");
         }
+    }
+
+    async prepareBh3BindInfo(e, data_ = {}) {
+        const accounts = Object.entries(data_)
+            .filter(([, value]) => isBh3Role(value))
+            .map(([uid, value]) => ({
+                uid,
+                region: value.region || "",
+                name: value.region_name || value.region || "未知服务器",
+            }));
+        if (!accounts.length) return "";
+
+        const current = await redis.get(`xhh:bh3_uid:${e.user_id}`);
+        let defaultText = "";
+        if (!current) {
+            const first = accounts[0];
+            await redis.set(`xhh:bh3_uid:${e.user_id}`, first.uid);
+            await redis.set(`xhh:bh3_region:${e.user_id}`, first.region);
+            defaultText = `\n已自动设为默认水晶查询UID：${first.uid}（${first.name}）`;
+        }
+        const list = accounts.map((item, index) => `${index + 1}. ${item.uid}（${item.name}）`).join("\n");
+        return `已绑定崩坏3账号：\n${list}${defaultText}\n如需切换默认水晶查询账号，请发送 #切换水晶uid`;
     }
 
     async mysReqErrHandler(e, args, reject) {
@@ -608,11 +604,7 @@ export class user extends plugin {
         if (!config().Verification_API_KEY) return false
         let url = "http://api.ttocr.com/api/points?appkey=" + config().Verification_API_KEY
         let data = await (await fetch(url)).json()
-<<<<<<< Updated upstream
-        if (data.msg == "查询成功" && data.points) return e.reply(`剩余可用次数：约${Math.floor(data.points/10)}次`)
-=======
         if (data.msg == "查询成功" && data.points) return e.reply(`剩余可用次数：约${Math.floor(data.points / 10)}次`)
->>>>>>> Stashed changes
         else return e.reply(data.msg)
     }
 

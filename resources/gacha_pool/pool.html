@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8" />
+  <link rel="stylesheet" type="text/css" href="{{ppath}}gacha_pool/pool.css?v=3" />
+</head>
+<body {{sys.scale}}>
+  <div class="page {{mode}}">
+    <div class="bg-grid"></div>
+    <div class="header">
+      <div>
+        <div class="eyebrow">XHH GACHA POOL</div>
+        <h1>{{game}} · {{title}}</h1>
+        <p>{{subtitle}}</p>
+      </div>
+      {{if markIcon}}
+      <img class="mark mark-img {{markWide ? 'mark-wide' : ''}}" src="{{(markIcon.startsWith('http') || markIcon.startsWith('/')) ? markIcon : ppath + markIcon}}" />
+      {{else}}
+      <div class="mark">{{game === '崩坏3' ? 'HI3' : (game === '原神' ? 'GS' : (game === '星穹铁道' ? 'SR' : (game === '米游社' ? 'MYS' : 'ZZZ')))}}</div>
+      {{/if}}
+    </div>
+
+    {{if mode === 'gs-history'}}
+    <div class="history-cards">
+      {{each cards card}}
+      <div class="history-card">
+        <div class="version-badge">{{card.version}}</div>
+        <div class="time-bar">时间: {{card.time}}</div>
+        <div class="history-panel">
+          {{each card.rows row}}
+          <div class="history-row {{row.weapon ? 'weapon' : ''}}">
+            <div class="row-title">{{row.title}}</div>
+            <div class="history-items">
+              {{each row.items item}}
+              <div class="history-item {{item.rarity}} {{item.weapon ? 'weapon' : ''}} {{item.highlight ? 'highlight' : ''}}">
+                {{if item.icon}}
+                <img src="{{item.icon}}" />
+                {{else}}
+                <span>{{item.name.slice(0, 2)}}</span>
+                {{/if}}
+              </div>
+              {{/each}}
+            </div>
+          </div>
+          {{/each}}
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    {{else}}
+    <div class="cards">
+      {{each cards card}}
+      <div class="pool-card {{card.weapon ? 'weapon' : ''}} {{card.gameClass || ''}} {{card.partner ? 'partner' : ''}}">
+        {{if card.img}}
+        <img class="pool-bg {{card.bgContain ? 'contain' : ''}} {{card.bgBlur ? 'blur' : ''}}" src="{{card.img}}" />
+        {{/if}}
+        {{if card.icon}}
+        <div class="pool-icon-wrap"><img class="pool-icon" src="{{(card.icon.startsWith('http') || card.icon.startsWith('/')) ? card.icon : ppath + card.icon}}" /></div>
+        {{/if}}
+        <div class="pool-overlay"></div>
+        <div class="pool-content">
+          <div class="pool-top">
+            {{if card.index}}
+            <span class="pool-tag version">#{{card.index}}</span>
+            {{if card.version && card.version !== '-'}}<span class="pool-tag version ver">{{card.version}}</span>{{/if}}
+            {{else}}
+            <span class="pool-tag version">{{card.versionTag || (card.version || '-')}}</span>
+            {{/if}}
+            {{if card.type}}<span class="pool-tag type">{{card.type}}</span>{{/if}}
+          </div>
+          <div class="pool-title">{{card.title}}</div>
+          {{if card.time}}<div class="pool-time">{{card.time}}</div>{{/if}}
+          {{if card.note}}<div class="pool-note">{{card.note}}</div>{{/if}}
+          <div class="pool-bottom">
+            {{if card.s}}
+            <div class="up-item">
+              <div class="rank-badge s">{{card.mainLabel || 'S'}}</div>
+              <div class="up-name">{{card.s}}</div>
+            </div>
+            {{/if}}
+            {{if card.a}}
+            <div class="up-item">
+              <div class="rank-badge a">{{card.subLabel || 'A'}}</div>
+              <div class="up-name sub">{{card.a}}</div>
+            </div>
+            {{/if}}
+          </div>
+        </div>
+        {{if !card.img && !card.icon}}
+        <div class="pool-placeholder">{{card.weapon ? 'W' : (game === '崩坏3' ? 'H' : (game === '原神' ? 'G' : 'Z'))}}</div>
+        {{/if}}
+      </div>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    {{if note}}
+    <div class="note">{{note}}</div>
+    {{/if}}
+    <div class="footer">from 小花火</div>
+  </div>
+</body>
+</html>

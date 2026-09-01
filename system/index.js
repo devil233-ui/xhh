@@ -127,6 +127,11 @@ const config = () => {
     return yaml.get("./plugins/xhh/config/config.yaml");
 };
 
+const pluginPriority = (name, defaultVal) => {
+    const cfg = config() || {};
+    return cfg[`${name}_priority`] ?? defaultVal;
+};
+
 
 async function getSource(e) {
     //引用回复
@@ -170,6 +175,7 @@ export {
     makeForwardMsg,
     makeMessage,
     config,
+    pluginPriority,
     getSource,
     MysSign,
     zd_MysSign,

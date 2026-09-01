@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8" />
+  <link rel="stylesheet" type="text/css" href="{{ppath}}wiki/bh3_syw.css" />
+</head>
+<body {{sys.scale}}>
+<div class="wiki-page">
+  <div class="soft-glow"></div>
+  <main class="stigma-card">
+    <section class="hero">
+      <div class="title-area">
+        <div class="eyebrow">Honkai Impact 3rd · Stigma Archive{{if roleName}} · 专属角色 {{roleName}}{{/if}}</div>
+        <h1 class="name">{{setName}}</h1>
+        <p class="subtitle">圣痕套装 · 三件套</p>
+        <div class="rarity">
+          <% for (var i = 0; i < star; i++) { %>
+            <img class="star" src="{{ppath}}wiki/imgs/star.png">
+          <% } %>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span>SET BONUS</span><h2>套装效果</h2></div>
+      <div class="desc-text">{{setDesc}}</div>
+    </section>
+
+    <section class="piece-grid">
+      {{each pieces as p i}}
+      <div class="piece-col">
+        <div class="piece-header">
+          <img class="piece-icon" src="{{p.icon}}">
+          <h3>{{p.name}}</h3>
+          <span class="piece-pos">{{p.position}}</span>
+        </div>
+        <div class="piece-skill">{{p.skill}}</div>
+        <div class="piece-attrs">
+          {{each p.attr as a j}}
+          <div class="p-attr"><span>{{a.key}}</span><b>{{a.value}}</b></div>
+          {{/each}}
+        </div>
+      </div>
+      {{/each}}
+    </section>
+  </main>
+  <div class="wiki-footer">from 小花火</div>
+</div>
+</body>
+</html>

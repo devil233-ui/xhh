@@ -18,33 +18,85 @@
           <p class="name">{{qqname}}</p>
           <hr />
           <div class="zi_">
-            <p class="game_list">游戏列表：</p>
-            {{if gs_data}}
-            <p>原神</p>
-            {{/if}} {{if sr_data}}
-            <p>崩坏星穹铁道</p>
-            {{/if}} {{if zzz_data}}
-            <p>绝区零</p>
-            {{/if}}
+            <div class="game-tags">
+              <p class="game_label">游戏列表</p>
+              <div class="game-tags-grid">
+                {{if multi_game_name}}
+                <p>{{multi_game_name}}</p>
+                {{/if}}
+                {{if gs_data}}
+                <p>原神</p>
+                {{/if}} {{if sr_data}}
+                <p>崩坏：星穹铁道</p>
+                {{/if}} {{if zzz_data}}
+                <p>绝区零</p>
+                {{/if}} {{if bh3_data}}
+                <p>崩坏3</p>
+                {{/if}}
+              </div>
+            </div>
             <img class="xhh" src="{{ppath}}Tl/imgs/小花火.png" />
-            <br />
-            <p class="n_time">获取时间：</p>
-            <p class="n_time_">{{time}}</p>
+            <div class="time-line">
+              <p class="time_label">获取时间</p>
+              <p class="time_value">{{time}}</p>
+            </div>
           </div>
         </div>
       </div>
 
+      {{if multi_list && multi_list.length}}
+      {{each multi_list item}}
+      <div class="__box">
+        <div class="game">
+          <img src="{{ppath}}{{item.icon}}" />
+          <p>UID：{{item.uid}}</p>
+          <p>{{item.level}}级</p>
+          <p class="game-nick">昵称：{{item.name}}</p>
+          <div class="sign">
+            <img src="{{ppath}}Tl/imgs/签到.png" />
+            <span class="{{item.signed ? '' : 'red'}}">{{item.signText}}</span>
+          </div>
+        </div>
+        <div class="_box">
+          <div class="left_box">
+            <div class="top_box">
+              <img class="tl {{item.iconClass || ''}}" src="{{ppath}}{{item.mainIcon}}" />
+              <div class="k">
+                <p>{{item.mainName}}</p>
+                <div class="k_">
+                  <span class="{{item.mainWarn ? 'red' : 'blue'}}">{{item.current}}</span><span>/{{item.max}}</span>
+                </div>
+              </div>
+            </div>
+            <strong class="huifu">预计恢复时间</strong>
+            <strong class="huifu_time">{{item.time}}</strong>
+          </div>
+          <div class="right_box">
+            {{each item.rows row}}
+            <div class="_box_">
+              <img src="{{ppath}}{{row.icon}}" />
+              <p>{{row.label}}</p>
+              <div class="right_">
+                <p class="{{row.warn ? 'red' : 'blue'}}">{{row.value}}</p>
+              </div>
+            </div>
+            {{/each}}
+          </div>
+        </div>
+      </div>
+      {{/each}}
+      {{else}}
       {{if gs_data}}
       <div class="__box">
         <div class="game">
           <img src="{{ppath}}Tl/imgs/原神.jpg" />
           <p>UID：{{gs_data.uid}}</p>
           <p>{{gs_data.level}}级</p>
-          <p>昵称：{{gs_data.name}}</p>
+          <p class="game-nick">昵称：{{gs_data.name}}</p>
 
           <div class="sign">
             <img src="{{ppath}}Tl/imgs/签到.png" />
-            <span class="{{gs_data.has_signed  ?  '' :  'red'}}">{{gs_data.has_signed ? '今日已签' : '没有签到'}}</span>
+            <span class="{{gs_data.has_signed  ?  '' :  'red'}}">{{gs_data.has_signed ? '今日已签' : '尚未签到'}}</span>
           </div>
         </div>
         <div class="_box">
@@ -122,10 +174,10 @@
           <img src="{{ppath}}Tl/imgs/星铁.jpg" />
           <p>UID：{{sr_data.uid}}</p>
           <p>{{sr_data.level}}级</p>
-          <p>昵称：{{sr_data.name}}</p>
+          <p class="game-nick">昵称：{{sr_data.name}}</p>
           <div class="sign">
             <img src="{{ppath}}Tl/imgs/签到.png" />
-            <span class="{{sr_data.has_signed  ?  '' :  'red'}}">{{sr_data.has_signed ? '今日已签' : '没有签到'}}</span>
+            <span class="{{sr_data.has_signed  ?  '' :  'red'}}">{{sr_data.has_signed ? '今日已签' : '尚未签到'}}</span>
           </div>
         </div>
         <div class="_box">
@@ -201,10 +253,10 @@
           <img src="{{ppath}}Tl/imgs/绝区零.jpg" />
           <p>UID：{{zzz_data.uid}}</p>
           <p>{{zzz_data.level}}级</p>
-          <p>昵称：{{zzz_data.name}}</p>
+          <p class="game-nick">昵称：{{zzz_data.name}}</p>
           <div class="sign">
             <img src="{{ppath}}Tl/imgs/签到.png" />
-            <span class="{{zzz_data.has_signed  ?  '' :  'red'}}">{{zzz_data.has_signed ? '今日已签' : '没有签到'}}</span>
+            <span class="{{zzz_data.has_signed  ?  '' :  'red'}}">{{zzz_data.has_signed ? '今日已签' : '尚未签到'}}</span>
           </div>
         </div>
         <div class="_box">
@@ -240,7 +292,7 @@
               <p>占卜/刮刮卡</p>
               <div class="right_">
                 <p class="{{zzz_data.card_sign=='CardSignDone' ? 'blue' : 'red' }}">
-                  {{zzz_data.card_sign=='CardSignDone' ? '已' : '未'}}完成
+                  {{zzz_data.card_sign=='CardSignDone' ? '今日已签' : '尚未签到'}}
                 </p>
               </div>
             </div>
@@ -279,6 +331,85 @@
           </div>
         </div>
       </div>
+      {{/if}}
+
+      {{if bh3_data}}
+      <div class="__box">
+        <div class="game">
+          <img src="{{ppath}}bh3_note/bh3_icon.png" />
+          <p>UID：{{bh3_data.uid}}</p>
+          <p>{{bh3_data.level}}级</p>
+          <p class="game-nick">昵称：{{bh3_data.name}}</p>
+          <div class="sign">
+            <img src="{{ppath}}Tl/imgs/签到.png" />
+            <span class="{{bh3_data.is_sign ? '' : 'red'}}">{{bh3_data.is_sign ? '今日已签' : '尚未签到'}}</span>
+          </div>
+        </div>
+        <div class="_box">
+          <div class="left_box">
+            <div class="top_box">
+              <img class="tl bh3-stamina-icon" src="{{ppath}}bh3_note/stamina.png" />
+              <div class="k">
+                <p>体力</p>
+                <div class="k_">
+                  <span class="{{bh3_data.current_stamina>=bh3_data.max_stamina ? 'red' : 'blue'}}">{{bh3_data.current_stamina}}</span><span>/{{bh3_data.max_stamina}}</span>
+                </div>
+              </div>
+            </div>
+            <strong class="huifu">预计恢复时间</strong>
+            <strong class="huifu_time">{{bh3_data.time}}</strong>
+          </div>
+          <div class="right_box">
+            <div class="_box_">
+              <span class="bh3-note-icon bh3-train-icon">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <path d="M32 7 54 20v24L32 57 10 44V20z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+                  <path d="M32 16 45 24v16l-13 8-13-8V24z" fill="currentColor" opacity=".9"/>
+                  <path d="M32 22v20M22 32h20" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".9"/>
+                </svg>
+              </span>
+              <p>历练值</p>
+              <div class="right_">
+                <p class="{{bh3_data.current_train_score<bh3_data.max_train_score ? 'red' : 'blue'}}">{{bh3_data.current_train_score}}</p>
+                /{{bh3_data.max_train_score}}
+              </div>
+            </div>
+            <div class="_box_">
+              <span class="bh3-note-icon bh3-abyss-icon">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <path d="M32 6 50 17v18c0 13-8 21-18 23-10-2-18-10-18-23V17z" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linejoin="round"/>
+                  <path d="M32 14 43 20v12c0 7-4 12-11 14-7-2-11-7-11-14V20z" fill="currentColor" opacity=".9"/>
+                  <path d="M32 25v14M25 32h14" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".95"/>
+                </svg>
+              </span>
+              <p>{{bh3_data.abyss_name || '超弦空间'}}</p>
+              <div class="right_">{{bh3_data.abyss_value || (bh3_data.abyss ? (bh3_data.abyss.is_open ? '进行中' : '未开启') : '暂无')}}</div>
+            </div>
+            <div class="_box_">
+              <span class="bh3-note-icon bh3-battle-icon">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <path d="M16 12h10l8 18 8-18h10l-12 22 6 18H22l6-18z" fill="currentColor" opacity=".9"/>
+                  <path d="M25 42h14" stroke="#fff" stroke-width="4.5" stroke-linecap="round" opacity=".95"/>
+                  <path d="M28 26h8" stroke="#fff" stroke-width="4.5" stroke-linecap="round" opacity=".95"/>
+                </svg>
+              </span>
+              <p>记忆战场</p>
+              <div class="right_">{{if bh3_data.battle_field}}{{bh3_data.battle_field.cur_reward || 0}}/{{bh3_data.battle_field.max_reward || 0}}{{else}}暂无{{/if}}</div>
+            </div>
+            <div class="_box_">
+              <span class="bh3-note-icon bh3-godwar-icon">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <path d="M34 7c2 10 15 14 15 28 0 11-8 20-18 20S13 46 13 35c0-9 6-15 13-20-1 7 2 12 6 15 4-5 6-12 2-23z" fill="currentColor"/>
+                  <path d="M30 18c-3 6-2 11 2 15 4-4 5-9 3-14" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/>
+                </svg>
+              </span>
+              <p>往世乐土</p>
+              <div class="right_">{{if bh3_data.god_war}}{{bh3_data.god_war.cur_reward || 0}}/{{bh3_data.god_war.max_reward || 0}}{{else}}暂无{{/if}}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {{/if}}
       {{/if}}
 
       <img class="mianju" src="{{ppath}}Tl/imgs/面具.png" />

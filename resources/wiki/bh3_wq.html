@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8" />
+  <link rel="stylesheet" type="text/css" href="{{ppath}}wiki/bh3_wq.css" />
+</head>
+<body {{sys.scale}}>
+<div class="wiki-page">
+  <div class="grid-light"></div>
+  <main class="weapon-card">
+    <section class="hero">
+      <div class="weapon-stage">
+        <div class="halo"></div>
+        <img class="weapon-img" src="{{img}}">
+      </div>
+      <div class="hero-info">
+        <div class="eyebrow">Honkai Impact 3rd · Weapon File{{if roleName}} · 专武角色 {{roleName}}{{/if}}</div>
+        <h1 class="name">{{name}}</h1>
+        <p class="subtitle">{{type}} · {{star}} · 攻击力 {{atk}}</p>
+        <div class="quick-stats">
+          <div class="stat"><span>武器类型</span><b>{{type}}</b></div>
+          <div class="stat"><span>基础攻击力</span><b>{{atk}}</b></div>
+          <div class="stat"><span>副属性</span><b>{{attr_.value}}</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span>SKILL</span><h2>武器技能</h2></div>
+      <div class="rich-text">{{@rich_text}}</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span>DETAIL</span><h2>详细属性</h2></div>
+      <div class="attr-list">
+        {{each attr as v i}}
+        <div class="attr-row"><span>{{v.key}}</span><b>{{v.value}}</b></div>
+        {{/each}}
+      </div>
+    </section>
+
+    {{if materials && materials.length}}
+    <section class="panel">
+      <div class="panel-head"><span>MATERIAL</span><h2>锻造材料</h2></div>
+      <div class="material-grid">
+        {{each materials as v i}}
+          <div class="material-item">
+            <img src="{{v.icon}}">
+            <div class="material-name">{{v.name}}</div>
+            <div class="material-count">×{{v.count}}</div>
+          </div>
+        {{/each}}
+      </div>
+      <div class="week">获取途径：{{week}}</div>
+    </section>
+    {{/if}}
+  </main>
+  <div class="wiki-footer">from 小花火</div>
+</div>
+</body>
+</html>

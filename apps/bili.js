@@ -1,43 +1,43 @@
-import fs from "fs";
-import { bili, config,getSource } from "#xhh";
-import fetch from "node-fetch";
-import moment from "moment";
+import fs from 'fs';
+import { bili, config, getSource, pluginPriority } from '#xhh';
+import fetch from 'node-fetch';
+import moment from 'moment';
 
 export class bilibili extends plugin {
   constructor(e) {
     super({
-      name: "[小花火]bili",
-      dsc: "",
-      event: "message",
-      priority: -120,
+      name: '[小花火]bili',
+      dsc: '',
+      event: 'message',
+      priority: pluginPriority('bilibili', -120),
       rule: [
         {
-          reg: "^#*(小花火)?清(空|除)(b站|B站|哔哩哔哩|bili|bilibili)缓存$",
-          fnc: "ggg",
-          permission: "master",
+          reg: '^#*(小花火)?清(空|除)(b站|B站|哔哩哔哩|bili|bilibili)缓存$',
+          fnc: 'ggg',
+          permission: 'master',
         },
         {
-          reg: "^#*(小花火)?(强制刷新|刷新|删除)(b站|B站|哔哩哔哩|bili|bilibili)ck$",
-          fnc: "sx",
+          reg: '^#*(小花火)?(强制刷新|刷新|删除)(b站|B站|哔哩哔哩|bili|bilibili)ck$',
+          fnc: 'sx',
         },
         {
-          reg: "^#*(小花火)?(查看)*(我的)*(b站|B站|哔哩哔哩|bili|bilibili)账号$",
-          fnc: "zh",
+          reg: '^#*(小花火)?(查看)*(我的)*(b站|B站|哔哩哔哩|bili|bilibili)账号$',
+          fnc: 'zh',
         },
         {
-          reg: "^#*(小花火)?(b站|B站|哔哩哔哩|bili|bilibili)(扫码)?登(录|路|陆)$",
-          fnc: "sm",
+          reg: '^#*小花火(b站|B站|哔哩哔哩|bili|bilibili)(扫码)?登(录|路|陆)$',
+          fnc: 'sm',
         },
         {
-          reg: "",
-          fnc: "b",
+          reg: '',
+          fnc: 'b',
           log: false,
         },
       ],
     });
     this.task = {
-      cron: "0 0 4 * * *", //Cron表达式，(秒 分 时 日 月 星期)
-      name: "[小花火]清空bilibili缓存",
+      cron: '0 0 4 * * *', // Cron表达式，(秒 分 时 日 月 星期)
+      name: '[小花火]清空bilibili缓存',
       fnc: () => this.ggg(),
     };
   }
@@ -56,93 +56,102 @@ export class bilibili extends plugin {
     if (!e.msg || !this.Check()) return false;
     let msg, url, data, res, bv, user_id, id, dt_id, pl_id, pl_type;
 
-    //卡片分享
-    if (e.raw_message == "[json消息]" || e.message[0]?.type == "json") {
-      id = await this.json_bv(e.msg.replace(/当前QQ版本不支持此应用，请升级/g, ""), e);
+    // 卡片分享
+    if (e.raw_message == '[json消息]' || e.message[0]?.type == 'json') {
+      id = await this.json_bv(e.msg.replace(/当前QQ版本不支持此应用，请升级/g, ''), e);
       if (!id) return false;
-      //检cd
+      // 检CD
       if (await checkCooldown(id.bv || id.dt_id)) return false;
       if (id.bv) return bili.video(e, id.bv, false, true, true);
       if (id.dt_id) return bili.dt(id.dt_id, e);
     }
 
-    //b23.tv链接
-    if (e.raw_message.includes("https://b23.tv/")) {
-      url = e.raw_message.match("https://b23.tv/([\\w]+)");
+    // b23.tv链接
+    if (e.raw_message.includes('https://b23.tv/')) {
+      url = e.raw_message.match('https://b23.tv/([\\w]+)');
       url = url[0];
       id = await this.getbv(url);
       if (!id) return false;
-      //检cd
+      // 检CD
       if (await checkCooldown(id.bv || id.dt_id)) return false;
       if (id.bv) return bili.video(e, id.bv, false, true);
       if (id.dt_id) return bili.dt(id.dt_id, e);
     }
 
-    //视频链接and动态链接
+    // 抽卡链接等米游社/原神链接，不交给b站解析，避免authkey被误判为BV号
+    if (/getGachaLog|getLdGachaLog|authkey_ver|webstatic\.mihoyo\.com|public-operation-(hk4e|hkrpg)|mihoyo\.com\/gacha|hoyoverse\.com\/gacha/i.test(e.raw_message)) return false;
+
+    // 视频链接和动态链接
     if (await handleBilibiliLink(e)) return true;
 
-    //引用回复
-    let source = await getSource(e)
+    // 引用回复
+    let source
+    try {
+      source = await getSource(e)
+    } catch (_) {
+      return false
+    }
 
     if (!source) return false;
 
-    source.message_id = source.message_id.toString().replace(/\//g, ""); //防止有/的情况
+    source.message_id = source.message_id.toString().replace(/\//g, ''); // 防止有/的情况
 
-    if (source.message[0]?.type != "image" && source.message[0]?.type != "json") return false;
+    if (source.message[0]?.type != 'image' && source.message[0]?.type != 'json') return false;
 
-    if (source.message[0].type == "image") {
-      //展开评论区
-      if (e.msg.includes("展开")) {
+    if (source.message[0].type == 'image') {
+      // 展开评论区
+      if (e.msg.includes('展开')) {
         let n = await /\d+/.exec(e.msg);
         return bili.reply_(e, n, source.message_id);
       }
 
-      if ([ "获取图片", "下载图片", "图片" ].includes(e.msg))
+      if (['获取图片', '下载图片', '图片'].includes(e.msg))
         return bili.tu(e, source.message_id);
 
       try {
         data = JSON.parse(
           fs.readFileSync(
             `./plugins/xhh/temp/bili/${source.message_id}.json`,
-            "utf-8"
+            'utf-8'
           )
         );
       } catch (err) {
         return false;
       }
       bv = data.bv;
-      if ([ "下载封面", "封面下载", "获取封面", "封面" ].includes(e.msg) && bv)
+      if (['下载封面', '封面下载', '获取封面', '封面'].includes(e.msg) && bv)
         return bili.fm(e, source.message_id);
       dt_id = data.dt_id;
       pl_id = data.pl_id;
       pl_type = data.pl_type;
       user_id = data.up_id || data.uid;
       if (!bv && !dt_id) return false;
-    } else if (source.message[0].type == "json") {
+    } else if (source.message[0].type == 'json') {
       msg = source.message[0].data;
       id = await this.json_bv(msg);
       if (!id) return false;
       bv = id.bv;
       dt_id = id.dt_id;
-      if ([ "下载封面", "封面下载", "获取封面", "封面" ].includes(e.msg) && bv)
+      if (['下载封面', '封面下载', '获取封面', '封面'].includes(e.msg) && bv)
         return bili.fm(e, false, bv);
     }
 
-    if ([ "下载视频", "视频下载", "获取视频" ].includes(e.msg) && bv) return bili.Download(e, bv);
+    if (['下载视频', '视频下载', '获取视频'].includes(e.msg) && bv) return bili.Download(e, bv);
 
-    if ([ "点赞", "赞", "取消点赞", "点赞取消", "取消赞", "赞取消" ].includes(e.msg) && bv)
+    if (['点赞', '赞', '取消点赞', '点赞取消', '取消赞', '赞取消'].includes(e.msg) && bv)
       return bili.dz(e, bv);
-    //去(#)
-    msg = e.msg.replace(/#|b站|B站|哔哩哔哩|bili|bilibili/g, "");
+
+    // 去(#)
+    msg = e.msg.replace(/#|b站|B站|哔哩哔哩|bili|bilibili/g, '');
 
     if (
-      [ "添加推送", "取消推送", "关闭推送", "开启推送", "删除推送" ].includes(
+      ['添加推送', '取消推送', '关闭推送', '开启推送', '删除推送'].includes(
         msg
       ) &&
       e.isGroup &&
       bv
     ) {
-      //主人权限，群主权限，管理员权限，推送在当前群聊
+      // 主人权限，群主权限，管理员权限，推送在当前群聊
       if (!e.member.is_admin && !e.member.is_owner && !e.isMaster) {
         return false;
       }
@@ -150,26 +159,26 @@ export class bilibili extends plugin {
       return bili.tuis(e, user_id, e.group_id);
     }
 
-    //获取简介
-    if (e.msg == "简介" && bv) return bili.jj(e, source.message_id);
+    // 获取简介
+    if (e.msg == '简介' && bv) return bili.jj(e, source.message_id);
 
-    //主动解析卡片(emmm...一般都自动解析了)
-    if ([ "解析", "解" ].includes(e.msg) && source.message[0].type == "json") {
-      e.jiexi=true;
+    // 主动解析卡片(一般都会自动解析)
+    if (['解析', '解'].includes(e.msg) && source.message[0].type == 'json') {
+      e.jiexi = true;
       if (bv) return bili.video(e, bv);
       if (dt_id) return bili.dt(id.dt_id, e);
     }
 
-    //下面的全要主人权限
+    // 下面的全要主人权限
     if (!e.isMaster) return false;
 
     if (
-      [ "投币", "投币1", "投币2", "收藏", "取消收藏", "三连" ].includes(e.msg) &&
+      ['投币', '投币1', '投币2', '收藏', '取消收藏', '三连'].includes(e.msg) &&
       bv
     )
       return bili.dz(e, bv);
 
-    if ([ "关注", "取消关注", "拉黑", "取消拉黑" ].includes(e.msg)) {
+    if (['关注', '取消关注', '拉黑', '取消拉黑'].includes(e.msg)) {
       if (!user_id) {
         if (bv) user_id = (await bili.sp_(bv)).owner.mid;
         if (dt_id) user_id = await bili.dt_mid(dt_id);
@@ -178,7 +187,7 @@ export class bilibili extends plugin {
       return bili.user(e, user_id, bv || dt_id, bv ? true : false);
     }
 
-    if (e.msg.substring(0, 2) == "评论") {
+    if (e.msg.substring(0, 2) == '评论') {
       if (bv) return bili.bili_reply(e, bv);
       if (pl_id && pl_type && dt_id)
         return bili.bili_reply(e, pl_id, pl_type, dt_id);
@@ -205,12 +214,11 @@ export class bilibili extends plugin {
     let res = await fetch(url);
     if (res.status != 200) return false;
     url = res.url;
-    //  logger.mark(url)
     let id =
-      url.match("https://www.bilibili.com/opus/([\\w]+)") ||
-      url.match("https://t.bilibili.com/([\\w]+)");
+      url.match('https://www.bilibili.com/opus/([\\w]+)') ||
+      url.match('https://t.bilibili.com/([\\w]+)');
     if (id) id = id[1];
-    let bv = url.match("https://www.bilibili.com/video/([\\w]+)");
+    let bv = url.match('https://www.bilibili.com/video/([\\w]+)');
     if (bv) bv = bv[1];
     if (!id && !bv) return false;
     return { bv: bv, dt_id: id };
@@ -224,27 +232,27 @@ export class bilibili extends plugin {
       msg = JSON.parse(msg);
     }
     const url = msg.meta?.detail_1?.qqdocurl || msg.meta?.news?.jumpUrl;
-    if (!url?.includes("b23.tv") && !url?.includes("bilibili.com")) return false;
+    if (!url?.includes('b23.tv') && !url?.includes('bilibili.com')) return false;
 
     let id = await this.getbv(url);
     return id;
   }
 
-  //清空缓存
+  // 清空缓存
   async ggg(e) {
     if (!this.Check()) return false;
     try {
-      fs.rmSync("./plugins/xhh/temp/bili/", { recursive: true });
+      fs.rmSync('./plugins/xhh/temp/bili/', { recursive: true });
     } catch (err) {
       return false;
     }
-    if (e) return e.reply("已清空bilibili缓存");
+    if (e) return e.reply('已清空bilibili缓存');
   }
 
   sx(e) {
     if (!this.Check() || !e.isMaster) return false;
-    const isRefresh = e.msg.includes("刷新");
-    const isForce = e.msg.includes("强制");
+    const isRefresh = e.msg.includes('刷新');
+    const isForce = e.msg.includes('强制');
     return isRefresh ? bili.sx_ck(e, isForce) : bili.sc_ck(e);
   }
 
@@ -260,6 +268,9 @@ export class bilibili extends plugin {
 }
 
 async function handleBilibiliLink(e) {
+  // 带边界限制的BV号匹配：前后不能紧跟字母数字，
+  // 避免抽卡链接authkey等长字符串中的子串被误判为BV号
+  const bvPattern = /(?<![a-zA-Z0-9])BV[0-9A-Za-z]{10}(?![a-zA-Z0-9])/;
   const urlPatterns = [
     {
       pattern: /https?:\/\/www\.bilibili\.com\/video\/([\w]+)/,
@@ -286,17 +297,17 @@ async function handleBilibiliLink(e) {
       handler: (dt_id, e) => bili.dt(dt_id, e),
     },
     {
-      pattern: /BV[a-zA-Z0-9]{10}/,
+      pattern: bvPattern,
       handler: (bv, e) => bili.video(e, bv, false, true),
-    }, //放最后匹配
+    }, // 放最后匹配
   ];
 
   for (const { pattern, handler } of urlPatterns) {
     const match = e.raw_message.match(pattern);
     if (match) {
       let id = match[1];
-      if (pattern == "/BV[a-zA-Z0-9]{10}/") id = match[0];
-      // 检cd
+      if (pattern === bvPattern) id = match[0]; // BV号直接取整段匹配
+      // 检CD
       if (await checkCooldown(id)) return false;
 
       if (!handler(id, e)) return false;
@@ -308,21 +319,17 @@ async function handleBilibiliLink(e) {
   return false;
 }
 
-
-
-
-
 async function checkCooldown(id) {
-  if(!config().b_cd) return false;
+  if (!config().b_cd) return false;
   const CD = 3 * 60;
-  const last_time=await redis.get(`xhh_bili_jx:${id}_CD`);
-  let now_time = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
+  const last_time = await redis.get(`xhh_bili_jx:${id}_CD`);
+  let now_time = moment(new Date()).format('YYYY-MM-DD HH:mm:ss');
   if (last_time) {
-    const seconds = moment(now_time).diff(moment(last_time), "seconds");
+    const seconds = moment(now_time).diff(moment(last_time), 'seconds');
     logger.error(`bili同一视频id或动态id解析CD中，剩余时间：${CD - seconds}秒`);
     return true;
   }
   // 写入CD
-  await redis.set(`xhh_bili_jx:${id}_CD`, now_time, { EX: CD }); //进入CD
+  await redis.set(`xhh_bili_jx:${id}_CD`, now_time, { EX: CD }); // 进入CD
   return false;
 }
