@@ -14,6 +14,7 @@ const RECHARGE_LOG_URLS = [
 ];
 const BH3_WIKI_BASE = 'https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/home/content/list?app_sn=bh3_wiki';
 const BH3_LEGACY_REGIONS = ['android01', 'ios01', 'pc01', 'bb01', 'yyb01', 'hun01', 'hun02'];
+const AUTHKEY_LOGIN_EXPIRED_CODES = new Set([-100, -10001, 10001]);
 let starMapCache = null;
 const ICON_CACHE_DIR = './plugins/xhh/data/bh3_gacha/icons';
 
@@ -166,11 +167,11 @@ export class bh3_gacha extends plugin {
         uid = (await loadNoteUser())?.getUid?.('bh3') || '';
       } catch (_) {}
     }
-    if (!uid) return { error: '未找到崩坏3 UID，请先绑定崩坏3账号。' };
+    if (!uid) return { error: '未找到可用的崩坏3 Stoken 条目，请先扫码登录并保存 Stoken；不需要单独绑定 UID。' };
     if (!region) region = 'cn_gf01';
 
     if (!stokenCookie) {
-      return { error: `未找到 UID${uid} 对应的崩坏3 stoken，抽卡记录需要先刷新ck或重新扫码绑定。` };
+      return { error: `未找到 UID${uid} 对应的崩坏3 Stoken，请先扫码登录或重新保存 Stoken。` };
     }
     if (!ck) {
       try {
@@ -213,9 +214,16 @@ export class bh3_gacha extends plugin {
       },
       body: bodyStr,
     }).then(r => r.json());
-    if (res?.retcode === 0 && res.data?.authkey) return res.data.authkey;
+    if (res?.retcode === 0 && res.data?.authkey) return { authkey: res.data.authkey };
     logger.warn('[xhh][bh3_gacha] genAuthKey failed:', JSON.stringify(res));
-    return null;
+    if (AUTHKEY_LOGIN_EXPIRED_CODES.has(res?.retcode)) {
+      return { error: `崩坏3登录状态已失效（UID${uid}），请重新扫码登录并保存 Stoken 后再试。`, retcode: res?.retcode };
+    }
+    if (res?.retcode === 1016) {
+      return { error: `UID${uid} 尚未绑定崩坏3通行证，请确认该 UID 与 Stoken 对应。`, retcode: res?.retcode };
+    }
+    const detail = res?.message || res?.msg || `retcode=${res?.retcode ?? 'unknown'}`;
+    return { error: `UID${uid} 获取崩坏3 authkey 失败：${detail}`, retcode: res?.retcode };
   }
 
   gachaBaseParams(uid, authkey, type = '1') {
@@ -400,8 +408,10 @@ export class bh3_gacha extends plugin {
     const auth = await this.getAuth(e);
     if (auth.error) return sendMsg(e, auth.error.replace('抽卡记录', '充值记录'));
     const { uid, region, stokenCookie } = auth;
-    const authkey = await this.getAuthKey(uid, region, stokenCookie);
-    if (!authkey) return sendMsg(e, `UID${uid} 获取崩坏3 authkey 失败，请确认该 UID 已绑定崩坏3通行证且 stoken 有效。`);
+    const authKeyResult = await this.getAuthKey(uid, region, stokenCookie);
+    if (authKeyResult?.error) return sendMsg(e, authKeyResult.error.replace('抽卡记录', '充值记录'));
+    const authkey = authKeyResult?.authkey;
+    if (!authkey) return sendMsg(e, `UID${uid} 获取崩坏3 authkey 失败，请检查 Stoken 登录状态。`);
 
     const menus = await this.getRawMenus(uid, authkey, ['3']);
     const menu = menus.find(m => /充值记录/.test(m.label || '')) || { label: '充值记录', type: 1, menu_type: '3' };
@@ -434,8 +444,10 @@ export class bh3_gacha extends plugin {
     const auth = await this.getAuth(e);
     if (auth.error) return auth.error;
     const { uid, region, stokenCookie } = auth;
-    const authkey = await this.getAuthKey(uid, region, stokenCookie);
-    if (!authkey) return `UID${uid} 获取崩坏3 authkey 失败，请确认该 UID 已绑定崩坏3通行证且 stoken 有效。`;
+    const authKeyResult = await this.getAuthKey(uid, region, stokenCookie);
+    if (authKeyResult?.error) return authKeyResult.error;
+    const authkey = authKeyResult?.authkey;
+    if (!authkey) return `UID${uid} 获取崩坏3 authkey 失败，请检查 Stoken 登录状态。`;
     const menus = await this.getMenus(uid, authkey);
     if (!menus.length) return `UID${uid} 获取卡池列表失败。`;
 
