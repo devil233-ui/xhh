@@ -78,8 +78,13 @@ export class bh3_gacha extends plugin {
 
   async getAuth(e) {
     let qq = e.user_id;
+    const selfId = e.self_id ?? globalThis.Bot?.uin ?? '';
     for (const msg of e.message || []) {
-      if (msg.type === 'at') { qq = msg.qq; break; }
+      if (msg.type !== 'at') continue;
+      const atQq = msg.qq ?? msg.data?.qq;
+      if (!atQq || (selfId && String(atQq) === String(selfId))) continue;
+      qq = atQq;
+      break;
     }
 
     let uid = await redis.get(`xhh:bh3_uid:${qq}`);
