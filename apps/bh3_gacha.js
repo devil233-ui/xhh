@@ -13,8 +13,14 @@ const RECHARGE_LOG_URLS = [
   'https://public-operation-common.mihoyo.com/common/bh3_self_help_query/UserRechargeRecordQuery/GetUserRechargeRecord',
 ];
 const BH3_WIKI_BASE = 'https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/home/content/list?app_sn=bh3_wiki';
+const BH3_LEGACY_REGIONS = ['android01', 'ios01', 'pc01', 'bb01', 'yyb01', 'hun01', 'hun02'];
 let starMapCache = null;
 const ICON_CACHE_DIR = './plugins/xhh/data/bh3_gacha/icons';
+
+function isBh3StokenEntry(entry = {}) {
+  if (entry?.game_biz) return entry.game_biz === 'bh3_cn';
+  return BH3_LEGACY_REGIONS.includes(entry?.region || '');
+}
 
 
 async function sendMsg(e, msg) {
@@ -80,52 +86,93 @@ export class bh3_gacha extends plugin {
     let region = uid ? await redis.get(`xhh:bh3_region:${qq}`) : null;
     let stokenCookie = null;
     let ck = null;
+    let noteUser;
+
+    const loadNoteUser = async () => {
+      if (noteUser !== undefined) return noteUser;
+      try { noteUser = await NoteUser.create(qq); } catch (_) { noteUser = null; }
+      return noteUser;
+    };
+
+    const hasBh3Uid = async candidate => {
+      const user = await loadNoteUser();
+      if (!user || !candidate) return false;
+      try {
+        if (user.hasUid?.(candidate, 'bh3')) return true;
+        return String(user.getUid?.('bh3') || '') === String(candidate);
+      } catch (_) {
+        return false;
+      }
+    };
 
     const stokenPath = `./plugins/xhh/data/Stoken/${qq}.yaml`;
-    if (fs.existsSync(stokenPath)) {
-      const stokenData = yaml.get(stokenPath) || {};
-      if (!uid) {
-        for (const key of Object.keys(stokenData)) {
-          const entry = stokenData[key];
-          if (entry?.region?.includes('cn_') || entry?.region) {
-            uid = key;
-            region = entry.region || region;
-            break;
-          }
+    const stokenData = fs.existsSync(stokenPath) ? yaml.get(stokenPath) || {} : null;
+    if (uid) {
+      const entry = stokenData?.[uid];
+      const invalidEntry = entry ? !isBh3StokenEntry(entry) : !(await hasBh3Uid(uid));
+      if (invalidEntry) {
+        uid = '';
+        region = null;
+      }
+    }
+    if (!uid) {
+      const user = await loadNoteUser();
+      const preferredUid = user?.getUid?.('bh3') || '';
+      if (preferredUid) {
+        if (stokenData && isBh3StokenEntry(stokenData[preferredUid])) {
+          uid = String(preferredUid);
+          region = stokenData[uid].region || region;
+        } else if (stokenData) {
+          return { error: `未找到当前崩坏3 UID${preferredUid} 对应的 stoken，抽卡记录需要先刷新ck或重新扫码绑定。` };
+        } else {
+          uid = String(preferredUid);
         }
       }
-      const entry = stokenData[uid];
-      if (entry) {
-        region = entry.region || region;
-        stokenCookie = entry.ck_stoken || (entry.stuid && entry.stoken ? `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}` : null);
-        if (entry.stuid) {
-          try {
-            const nu = await NoteUser.create(qq);
-            for (const ltuid in nu.mysUsers || {}) {
-              if (String(ltuid) === String(entry.stuid)) {
-                ck = nu.mysUsers[ltuid].ck;
-                break;
-              }
-            }
-          } catch (_) {}
+    }
+    if (!uid && stokenData) {
+      for (const key of Object.keys(stokenData)) {
+        const entry = stokenData[key];
+        if (isBh3StokenEntry(entry)) {
+          uid = key;
+          region = entry.region || region;
+          break;
         }
+      }
+    }
+    const entry = uid ? stokenData?.[uid] : null;
+    if (entry && isBh3StokenEntry(entry)) {
+      region = entry.region || region;
+      stokenCookie = entry.ck_stoken || (entry.stuid && entry.stoken ? `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}` : null);
+      if (entry.stuid) {
+        try {
+          const user = await loadNoteUser();
+          for (const ltuid in user?.mysUsers || {}) {
+            if (String(ltuid) === String(entry.stuid)) {
+              ck = user.mysUsers[ltuid].ck;
+              break;
+            }
+          }
+        } catch (_) {}
       }
     }
 
     if (!uid) {
-      try { uid = (await NoteUser.create(qq)).getUid('bh3'); } catch (_) {}
+      try {
+        uid = (await loadNoteUser())?.getUid?.('bh3') || '';
+      } catch (_) {}
     }
+    if (!uid) return { error: '未找到崩坏3 UID，请先绑定崩坏3账号。' };
     if (!region) region = 'cn_gf01';
 
     if (!stokenCookie) {
-      return { error: '未找到 stoken，抽卡记录需要先扫码绑定/保存 stoken 后才能生成 authkey。' };
+      return { error: `未找到 UID${uid} 对应的崩坏3 stoken，抽卡记录需要先刷新ck或重新扫码绑定。` };
     }
     if (!ck) {
       try {
-        const nu = await NoteUser.create(qq);
-        for (const ltuid in nu.mysUsers || {}) {
-          if (nu.mysUsers[ltuid]?.ck) {
-            ck = nu.mysUsers[ltuid].ck;
+        const user = await loadNoteUser();
+        for (const ltuid in user?.mysUsers || {}) {
+          if (user.mysUsers[ltuid]?.ck) {
+            ck = user.mysUsers[ltuid].ck;
             break;
           }
         }
@@ -349,7 +396,7 @@ export class bh3_gacha extends plugin {
     if (auth.error) return sendMsg(e, auth.error.replace('抽卡记录', '充值记录'));
     const { uid, region, stokenCookie } = auth;
     const authkey = await this.getAuthKey(uid, region, stokenCookie);
-    if (!authkey) return sendMsg(e, `UID${uid} 获取 authkey 失败，请确认 stoken 有效。`);
+    if (!authkey) return sendMsg(e, `UID${uid} 获取崩坏3 authkey 失败，请确认该 UID 已绑定崩坏3通行证且 stoken 有效。`);
 
     const menus = await this.getRawMenus(uid, authkey, ['3']);
     const menu = menus.find(m => /充值记录/.test(m.label || '')) || { label: '充值记录', type: 1, menu_type: '3' };
@@ -383,7 +430,7 @@ export class bh3_gacha extends plugin {
     if (auth.error) return auth.error;
     const { uid, region, stokenCookie } = auth;
     const authkey = await this.getAuthKey(uid, region, stokenCookie);
-    if (!authkey) return `UID${uid} 获取 authkey 失败，请确认 stoken 有效。`;
+    if (!authkey) return `UID${uid} 获取崩坏3 authkey 失败，请确认该 UID 已绑定崩坏3通行证且 stoken 有效。`;
     const menus = await this.getMenus(uid, authkey);
     if (!menus.length) return `UID${uid} 获取卡池列表失败。`;
 
