@@ -263,27 +263,45 @@ export class voice extends plugin {
         //         }
         //     }
         // }
-        if (!ffmpeg()) return false;
+        const voiceItem = list[n];
+        const description = String(voiceItem.dec || '')
+            .replace(/<br\s*\\?\/?>/gi, '\n')
+            .replace(/<\\?\/?color(?:=[^>]*)?>/gi, '');
         let yy;
+        voiceItem.title = voiceItem.title || `语音${n + 1}`;
+        voiceItem.dec = description;
+        const voiceText = `[简述]:${voiceItem.title}\n[内容]:${description}`;
 
         // 判断当前缓存的数据是否为 MYS 源
         if (data.isMys) {
-            yy = list[n]["audio_" + lx] || list[n].audio_cn; // 动态提取对应的语种
-            if (!yy || typeof yy !== "string") return e.reply("该语音暂无可用音频，请尝试其他语种或稍后重试", true);
+            yy = voiceItem["audio_" + lx] || voiceItem.audio_cn; // 动态提取对应的语种
+            if (!yy || typeof yy !== "string") {
+                await e.reply(voiceText);
+                await e.reply("该语音暂无可用音频，以上为文本内容", true);
+                return true;
+            }
             logger.mark(`[小花火语音] 正在获取 MYS 源语音: \x1B[36m${yy}\x1B[0m`);
             try {
                 let res = await fetch(yy);
-                if (!res.ok) return e.reply("获取MYS语音失败，请稍后重试", true);
+                if (!res.ok) {
+                    await e.reply(voiceText);
+                    return e.reply("获取MYS语音失败，请稍后重试", true);
+                }
                 let bufferData = Buffer.from(await res.arrayBuffer());
                 yy = "./plugins/xhh/temp/yy_pic/temp.mp3";
                 fs.writeFileSync(yy, bufferData);
             } catch (err) {
+                await e.reply(voiceText);
                 return e.reply("获取MYS语音失败，请稍后重试", true);
             }
         } else {
             // 内鬼网备用源防盗链拉取逻辑
-            yy = list[n].id + lx + ".ogg";
-            if (!list[n].id) return e.reply("该语音暂无可用音频，请稍后重试", true);
+            if (!voiceItem.id) {
+                await e.reply(voiceText);
+                await e.reply("该语音暂无可用音频，以上为文本内容", true);
+                return true;
+            }
+            yy = voiceItem.id + lx + ".ogg";
             logger.mark(`[小花火语音] 正在获取内鬼网语音: \x1B[36m${yy}\x1B[0m`);
             try {
                 let res = await fetch(yy);
@@ -299,16 +317,25 @@ export class voice extends plugin {
                         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
                     };
                     res = await fetch(yy, { method: "GET", headers });
-                    if (!res.ok) return e.reply("获取备用源语音失败，请稍后重试", true);
+                    if (!res.ok) {
+                        await e.reply(voiceText);
+                        return e.reply("获取备用源语音失败，请稍后重试", true);
+                    }
                     let bufferData = Buffer.from(await res.arrayBuffer());
                     yy = "./plugins/xhh/temp/yy_pic/temp.ogg";
                     fs.writeFileSync(yy, bufferData);
                 }
             } catch (err) {
+                await e.reply(voiceText);
                 return e.reply("获取备用源语音失败，请稍后重试", true);
             }
         }
         // if (!yy_ || typeof yy_ != 'string') return e.reply('获取该语音失败~', true);
+        if (!ffmpeg()) {
+            await e.reply(voiceText);
+            await e.reply("未安装 ffmpeg，无法发送语音，以上为文本内容", true);
+            return true;
+        }
         let vo = segment.record(yy);
         await e.reply(
             `[简述]:${list[n].title}\n[内容]:${list[n].dec.replace(/<br\\\/>/g, '\n').replace(/<color=#37FFFF>|<\\\/color>/g, '')}`
