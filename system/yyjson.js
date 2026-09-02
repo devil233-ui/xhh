@@ -1,5 +1,59 @@
 import fetch from "node-fetch";
 import { yaml } from "#xhh"
+
+const decodeUnicode = (value = "") => String(value)
+    .replace(/\\u([dD][89a-fA-F][0-9a-fA-F]{2})/g, (match, group) => {
+        return String.fromCharCode(parseInt(group, 16));
+    })
+    .replace(/\\u([0-9a-fA-F]{4})/g, (match, group) => {
+        return String.fromCharCode(parseInt(group, 16));
+    });
+
+const collectMatches = (source, pattern) => [...String(source).matchAll(pattern)]
+    .map(match => match[1])
+    .filter(value => value !== undefined);
+
+const extractVoiceSection = (html, isSr) => {
+    const source = String(html || "");
+    const pattern = isSr
+        ? /Continuous\s*RePlay([\s\S]*?)(?=<section\b[^>]*\bid=["']char_stories["'][^>]*>)/i
+        : /<td\b[^>]*>\s*VoiceOver\s*<\/td>([\s\S]*?)(?=<h2\b[^>]*>\s*Stories\s*<\/h2>)/i;
+    return source.match(pattern)?.[1] || source;
+};
+
+export function parseHoneyhunterVoice(html, type, id) {
+    const isSr = type === "sr";
+    const source = extractVoiceSection(html, isSr);
+    const titlePattern = isSr
+        ? /<tr\b[^>]*>\s*<td>(.*?)<\/td>\s*<td>\s*<div\b[^>]*class=["'][^"']*\bdialog_cont\b[^"']*["'][^>]*>/gis
+        : /<td>(.*?)<\/td>\s*<td>\s*<div\b[^>]*class=["'][^"']*\bdialog_cont\b[^"']*["'][^>]*>/gis;
+    const titles = collectMatches(source, titlePattern);
+    const idPattern = /dialog_data\.push\(\s*\{\s*["']start["']\s*:\s*["']?([^,"'\s]+)["']?\s*,/gi;
+    const ids = collectMatches(source, idPattern);
+    const decs = collectMatches(
+        source,
+        /\{\s*["']from["']\s*:\s*["'][^"']*["']\s*,\s*["']line["']\s*:\s*["']((?:\\.|[^"'\\])*)["']/g
+    );
+
+    if (!ids.length) return false;
+
+    const audioName = isSr
+        ? ""
+        : id === "playerboy"
+            ? "hero"
+            : id === "playergirl"
+                ? "heroine"
+                : id;
+    const list = ids.map((voiceId, index) => ({
+        id: isSr
+            ? `https://starrail.honeyhunterworld.com/audio/hsr-audio/${voiceId}_`
+            : `https://gensh.honeyhunterworld.com/audio/quotes/${audioName}/${voiceId}_`,
+        title: titles[index] || `语音${index + 1}`,
+        dec: decodeUnicode(decs[index] || "")
+    }));
+    return { list, id };
+}
+
 class yyjson {
     async gs_download(id) {
         try {
@@ -91,56 +145,29 @@ class yyjson {
     }
 
     async gs_other_download(name) {
-        const names = yaml.get("./plugins/xhh/system/default/gs_en_id.yaml")
-        if (!names[name]) return false
-        const id = names[name]
-        let data = await fetch(`https://gensh.honeyhunterworld.com/${id}/?lang=CHS`).then(res => res.text())
-        let arr = data.match(/<td>VoiceOver<\/td>(.*?)<h2>Stories<\/h2>/)[1]
-        const list = []
-        const titles = arr.match(/<td>(.*?)<\/td><td><div class="dialog_cont">/g).map(v => v.match(/<td>(.*?)<\/td><td><div class="dialog_cont">/)[1])
-        const ids = arr.match(/<script>dialog_data.push\({"start":"(.*?)",/g).map(v => v.match(/<script>dialog_data.push\({"start":"(.*?)",/)[1])
-        const decs = arr.match(/{"from":"(.*?)","line":"(.*?)"/g).map(v => v.match(/{"from":"(.*?)","line":"(.*?)"/)[2])
-        if (!ids[0]) return false
-        name = id
-        if (id == "playerboy") name = "hero"
-        if (id == "playergirl") name = "heroine"
-        for (let i = 0; i < ids.length; i++) {
-            list.push({
-                id: "https://gensh.honeyhunterworld.com/audio/quotes/" + name + "/" + ids[i] + "_",
-                title: titles[i],
-                dec: decs[i].replace(/\\u([dD][89a-fA-F][0-9a-fA-F]{2})/g, (match, grp) => {
-                    return String.fromCharCode(parseInt(grp, 16));
-                }).replace(/\\u([0-9a-fA-F]{4})/g, (match, grp) => {
-                    return String.fromCharCode(parseInt(grp, 16));
-                })
-            })
+        try {
+            const names = yaml.get("./plugins/xhh/system/default/gs_en_id.yaml") || {};
+            const id = names[name];
+            if (!id) return false;
+            const response = await fetch(`https://gensh.honeyhunterworld.com/${id}/?lang=CHS`);
+            if (!response.ok) return false;
+            return parseHoneyhunterVoice(await response.text(), "gs", id);
+        } catch (err) {
+            return false;
         }
-        return { list, id }
     }
 
     async sr_other_download(name) {
-        const names = yaml.get("./plugins/xhh/system/default/sr_en_id.yaml")
-        if (!names[name]) return false
-        const id = names[name]
-        let data = await fetch(`https://starrail.honeyhunterworld.com/${id}/?lang=CN`).then(res => res.text())
-        let arr = data.match(/Continuous RePlay(.*?)<section id="char_stories" class="tab-panel tab-panel-1">/)[1].replace("<tr>", "")
-        const list = []
-        const titles = arr.match(/<tr><td>(.*?)<\/td><td><div class="dialog_cont">/g).map(v => v.match(/<tr><td>(.*?)<\/td><td><div class="dialog_cont">/)[1])
-        const ids = arr.match(/<script>dialog_data.push\({"start":(.*?),/g).map(v => v.match(/<script>dialog_data.push\({"start":(.*?),/)[1])
-        const decs = arr.match(/{"from":"(.*?)","line":"(.*?)"/g).map(v => v.match(/{"from":"(.*?)","line":"(.*?)"/)[2])
-        if (!ids[0]) return false
-        for (let i = 0; i < ids.length; i++) {
-            list.push({
-                id: "https://starrail.honeyhunterworld.com/audio/hsr-audio/" + ids[i] + "_",
-                title: titles[i],
-                dec: decs[i].replace(/\\u([dD][89a-fA-F][0-9a-fA-F]{2})/g, (match, grp) => {
-                    return String.fromCharCode(parseInt(grp, 16));
-                }).replace(/\\u([0-9a-fA-F]{4})/g, (match, grp) => {
-                    return String.fromCharCode(parseInt(grp, 16));
-                })
-            })
+        try {
+            const names = yaml.get("./plugins/xhh/system/default/sr_en_id.yaml") || {};
+            const id = names[name];
+            if (!id) return false;
+            const response = await fetch(`https://starrail.honeyhunterworld.com/${id}/?lang=CN`);
+            if (!response.ok) return false;
+            return parseHoneyhunterVoice(await response.text(), "sr", id);
+        } catch (err) {
+            return false;
         }
-        return { list, id }
     }
 
 

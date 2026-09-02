@@ -13,6 +13,24 @@ import {
 
 const path = process.cwd();
 
+function mergeRoleNames(filePath, aliases) {
+    const names = {
+        ...(yaml.get(filePath) || {})
+    };
+    for (const [key, values] of Object.entries(aliases || {})) {
+        const current = Array.isArray(names[key]) ? names[key] : [];
+        names[key] = [...new Set(current.concat(Array.isArray(values) ? values : []))];
+    }
+    return names;
+}
+
+function resolveRoleName(names, name) {
+    for (const [key, aliases] of Object.entries(names)) {
+        if (key === name || (Array.isArray(aliases) && aliases.includes(name))) return key;
+    }
+    return name;
+}
+
 export class voice extends plugin {
     constructor() {
         super({
@@ -62,22 +80,16 @@ export class voice extends plugin {
         let miaoPath = "./plugins/miao-plugin/config/roleName.yaml";
         let miaoRoleName = fs.existsSync(miaoPath) ? yaml.get(miaoPath) : null;
 
-        //调用小花火原神别名
-        let gsnames = yaml.get("./plugins/xhh/system/default/gs_js_names.yaml") || {};
-        if (miaoRoleName && miaoRoleName.gs) {
-            for (let key in miaoRoleName.gs) {
-                if (!gsnames[key]) gsnames[key] = [];
-                if (Array.isArray(miaoRoleName.gs[key])) gsnames[key] = gsnames[key].concat(miaoRoleName.gs[key]);
-            }
-        }
-        if (!isSrMode) {
-            for (let i in gsnames) {
-                if (gsnames[i] && gsnames[i].includes(name)) {
-                    name = i;
-                    break;
-                }
-            }
-        }
+        // 先归一化当前游戏的别名，确保官方源和备用源使用同一个角色名。
+        const gsnames = mergeRoleNames(
+            "./plugins/xhh/system/default/gs_js_names.yaml",
+            miaoRoleName?.gs
+        );
+        const srnames = mergeRoleNames(
+            "./plugins/xhh/system/default/sr_js_names.yaml",
+            miaoRoleName?.sr
+        );
+        name = resolveRoleName(isSrMode ? srnames : gsnames, name);
         //先查原神
         // let gs_id = (await mys.data(name)).id;
         let background = '../../../../../plugins/xhh/resources/yytable/bg0.png';
@@ -113,19 +125,6 @@ export class voice extends plugin {
             if (isSrMode) background = "../../../../../plugins/xhh/resources/yytable/sr.png";
         } else {
             if (isSrMode) {
-                let srnames = yaml.get("./plugins/xhh/system/default/sr_js_names.yaml") || {};
-                if (miaoRoleName && miaoRoleName.sr) {
-                    for (let key in miaoRoleName.sr) {
-                        if (!srnames[key]) srnames[key] = [];
-                        if (Array.isArray(miaoRoleName.sr[key])) srnames[key] = srnames[key].concat(miaoRoleName.sr[key]);
-                    }
-                }
-                for (let i in srnames) {
-                    if (srnames[i] && srnames[i].includes(name)) {
-                        name = i;
-                        break;
-                    }
-                }
                 data = await yyjson.sr_other_download(name);
                 background = "../../../../../plugins/xhh/resources/yytable/sr.png";
             } else {
@@ -134,7 +133,7 @@ export class voice extends plugin {
         }
 
         if (!data || !data.list || data.list.length === 0) {
-            await e.reply("未获取到" + name + "的语音数据，如确认为已实装角色，请检查配置文件。");
+            await e.reply(`未获取到${isSrMode ? "星铁" : "原神"}角色“${name}”的语音数据，可能是数据源暂时不可用或该角色尚未上传。`);
             return false;
         }
 
@@ -270,33 +269,43 @@ export class voice extends plugin {
         // 判断当前缓存的数据是否为 MYS 源
         if (data.isMys) {
             yy = list[n]["audio_" + lx] || list[n].audio_cn; // 动态提取对应的语种
+            if (!yy || typeof yy !== "string") return e.reply("该语音暂无可用音频，请尝试其他语种或稍后重试", true);
             logger.mark(`[小花火语音] 正在获取 MYS 源语音: \x1B[36m${yy}\x1B[0m`);
-            let res = await fetch(yy);
-            if (!res.ok) return e.reply("获取MYS语音失败，请检查是否更新", true);
-            let bufferData = Buffer.from(await res.arrayBuffer());
-            yy = "./plugins/xhh/temp/yy_pic/temp.mp3";
-            fs.writeFileSync(yy, bufferData);
+            try {
+                let res = await fetch(yy);
+                if (!res.ok) return e.reply("获取MYS语音失败，请稍后重试", true);
+                let bufferData = Buffer.from(await res.arrayBuffer());
+                yy = "./plugins/xhh/temp/yy_pic/temp.mp3";
+                fs.writeFileSync(yy, bufferData);
+            } catch (err) {
+                return e.reply("获取MYS语音失败，请稍后重试", true);
+            }
         } else {
             // 内鬼网备用源防盗链拉取逻辑
             yy = list[n].id + lx + ".ogg";
+            if (!list[n].id) return e.reply("该语音暂无可用音频，请稍后重试", true);
             logger.mark(`[小花火语音] 正在获取内鬼网语音: \x1B[36m${yy}\x1B[0m`);
-            let res = await fetch(yy);
-            if (!res.ok) {
-                logger.mark("语音直接访问失败，尝试添加防盗链请求头下载...");
-                let headers = {
-                    "accept": "*/*",
-                    "accept-encoding": "identity;q=1, *;q=0",
-                    "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-                    "cookie": "_first_time=1;_lr_retry_request=true;",
-                    "Range": "bytes=0-",
-                    "referer": id.includes("-character") ? `https://starrail.honeyhunterworld.com/${id}/` : `https://gensh.honeyhunterworld.com/${id}/`,
-                    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
-                };
-                res = await fetch(yy, { method: "GET", headers });
-                if (!res.ok) return e.reply("获取备用源语音失败，请检查是否更新", true);
-                let bufferData = Buffer.from(await res.arrayBuffer());
-                yy = "./plugins/xhh/temp/yy_pic/temp.ogg";
-                fs.writeFileSync(yy, bufferData);
+            try {
+                let res = await fetch(yy);
+                if (!res.ok) {
+                    logger.mark("语音直接访问失败，尝试添加防盗链请求头下载...");
+                    let headers = {
+                        "accept": "*/*",
+                        "accept-encoding": "identity;q=1, *;q=0",
+                        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+                        "cookie": "_first_time=1;_lr_retry_request=true;",
+                        "Range": "bytes=0-",
+                        "referer": id.includes("-character") ? `https://starrail.honeyhunterworld.com/${id}/` : `https://gensh.honeyhunterworld.com/${id}/`,
+                        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
+                    };
+                    res = await fetch(yy, { method: "GET", headers });
+                    if (!res.ok) return e.reply("获取备用源语音失败，请稍后重试", true);
+                    let bufferData = Buffer.from(await res.arrayBuffer());
+                    yy = "./plugins/xhh/temp/yy_pic/temp.ogg";
+                    fs.writeFileSync(yy, bufferData);
+                }
+            } catch (err) {
+                return e.reply("获取备用源语音失败，请稍后重试", true);
             }
         }
         // if (!yy_ || typeof yy_ != 'string') return e.reply('获取该语音失败~', true);
