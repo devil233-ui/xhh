@@ -514,6 +514,36 @@ export const supportGuoba = () => ({
         component: 'Input',
       },
       {
+        field: 'abyss_report_sr_fiction_levels',
+        label: '星铁虚构叙事关卡筛选',
+        helpMessage: '留空显示全部；用数字1-5指定要显示的关卡序号，如 3,4 只显示其三、其四',
+        component: 'Input',
+      },
+      {
+        field: 'abyss_report_sr_maze_levels',
+        label: '星铁混沌回忆难度筛选',
+        helpMessage: '留空显示全部；用数字1-12指定要显示的难度，如 11,12 只显示第十一、十二层',
+        component: 'Input',
+      },
+      {
+        field: 'abyss_report_sr_doom_levels',
+        label: '星铁末日幻影难度筛选',
+        helpMessage: '留空显示全部；用数字1-5指定要显示的难度，如 3,4 只显示难度三、四',
+        component: 'Input',
+      },
+      {
+        field: 'abyss_report_zzz_shiyu_stages',
+        label: '绝区零式舆防卫战关卡筛选',
+        helpMessage: '留空显示全部；按 stage_num 筛选，如 4,5 只显示第四防线和节点5',
+        component: 'Input',
+      },
+      {
+        field: 'abyss_report_sr_invasion',
+        label: '星铁深渊星启模式',
+        helpMessage: '显示混沌回忆/虚构叙事/末日幻影最高难度的星启模式（污染入侵）区块',
+        component: 'Switch',
+      },
+      {
         component: 'Divider',
         label: '插件优先级（修改后需重启Bot）',
       },
@@ -777,6 +807,11 @@ export const supportGuoba = () => ({
         abyss_report_repos: cfg.abyss_report_repos || 'https://cnb.cool/JIUXJIU/Abyss/-/git/raw/main\nhttps://cnb.cool/JIUXJIU/AbyssBeta/-/git/raw/main',
         abyss_report_gs_version: cfg.abyss_report_gs_version || '',
         abyss_report_sr_version: cfg.abyss_report_sr_version || '',
+        abyss_report_sr_fiction_levels: cfg.abyss_report_sr_fiction_levels || '3,4',
+        abyss_report_sr_maze_levels: cfg.abyss_report_sr_maze_levels || '11,12',
+        abyss_report_sr_doom_levels: cfg.abyss_report_sr_doom_levels || '3,4',
+        abyss_report_zzz_shiyu_stages: cfg.abyss_report_zzz_shiyu_stages || '4,5',
+        abyss_report_sr_invasion: cfg.abyss_report_sr_invasion !== false,
         abyss_report_priority: cfg.abyss_report_priority ?? 100,
       }
     },
@@ -807,6 +842,7 @@ export const supportGuoba = () => ({
         by: data.by,
         xbgd: data.xbgd,
         cover: data.cover,
+        abyss_report_sr_invasion: data.abyss_report_sr_invasion,
       }
       for (const [k, v] of Object.entries(boolMap)) {
         const target = ['forwardMsg', 'bh3', 'by', 'xbgd', 'cover'].includes(k) ? 'other.yaml' : 'config.yaml'
@@ -875,6 +911,10 @@ export const supportGuoba = () => ({
       yaml.set(_path + 'config.yaml', 'abyss_report_repos', String(data.abyss_report_repos || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_gs_version', String(data.abyss_report_gs_version || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_sr_version', String(data.abyss_report_sr_version || '').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_sr_fiction_levels', String(data.abyss_report_sr_fiction_levels || '').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_sr_maze_levels', String(data.abyss_report_sr_maze_levels || '').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_sr_doom_levels', String(data.abyss_report_sr_doom_levels || '').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_zzz_shiyu_stages', String(data.abyss_report_zzz_shiyu_stages || '').trim())
 
       const priorityFields = [
         'tl_priority', 'sign_priority', 'user_priority', 'wiki_priority',
