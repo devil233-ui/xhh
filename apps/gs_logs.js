@@ -24,6 +24,8 @@ export class gs_logs extends plugin {
   }
   async gslogs(e) {
     if (!config().gs_logs) return false;
+    // 官方/米游社卡池交给全游戏卡池处理，避免旧历史卡池规则抢占命令。
+    if (/(?:米游社|官方)/.test(e.msg)) return false;
     let type = e.msg.replace(/#|卡池/g, "").trim();
     if (!type.includes(".")) {
       let m = 0;
@@ -68,12 +70,14 @@ export class gs_logs extends plugin {
 
   async time(e) {
     if (!config().sr_strategy) return false;
-    let data = await yaml.get(path);
-    let date_list = Object.keys(data.date);
+    let data = (await yaml.get(path)) || {};
+    let date_list = Object.keys(data.date || {});
+    if (!date_list.length) return false;
     let _date = date_list[0];
     let type = _date.match("【(.*)】")[1];
     let msg;
     msg = await this.getmsg(type);
+    if (!Array.isArray(msg)) return false;
     //计算时间
     let time = _date.split("~")[1];
     let ptime = new Date().getTime();
@@ -87,9 +91,12 @@ export class gs_logs extends plugin {
   }
 
   async getmsg(type) {
-    let data = await yaml.get(path);
-    let date_list = Object.keys(data.date);
-    let ver = Object.keys(data.ver);
+    let data = (await yaml.get(path)) || {};
+    let date = data.date || {};
+    let imgs = data.imgs || {};
+    let versions = data.ver || {};
+    let date_list = Object.keys(date);
+    let ver = Object.keys(versions);
     let date_name = [];
     date_list.map(val => {
       date_name.push(val.match("【(.*)】")[1]);
@@ -104,7 +111,7 @@ export class gs_logs extends plugin {
     //判断[[x.x上半/下半],[4-6].[0-8]]
     for (var val of date_name) {
       n = date_name.indexOf(val);
-      list = data.imgs[`【${val}】`];
+      list = imgs[`【${val}】`] || [];
       if (val == type || String(val.match(/[4-6]\.[0-8]/g)) == type) {
         msg.push(date_list[n]);
         for (var img of list) {
@@ -118,7 +125,7 @@ export class gs_logs extends plugin {
     for (var val of ver) {
       let tu;
       if (val == type) {
-        tu = data.ver[type];
+        tu = versions[type];
 
         //QQ不支持发https://upload-bbs.miyoushe.com/
         if (tu?.includes("https://upload-bbs.miyoushe.com/")) {
@@ -130,7 +137,7 @@ export class gs_logs extends plugin {
         }
       } else if (val + ".0" == type) {
         type = type.replace(/.0/g, "");
-        tu = data.ver[type];
+        tu = versions[type];
 
         //QQ不支持发https://upload-bbs.miyoushe.com/
         if (tu?.includes("https://upload-bbs.miyoushe.com/")) {
@@ -148,8 +155,8 @@ export class gs_logs extends plugin {
     for (var val of date_list) {
       n = date_list.indexOf(val);
       imgname = val.match("【(.*)】")[0];
-      list = data.imgs[imgname];
-      name = data.date[val];
+      list = imgs[imgname] || [];
+      name = date[val] || [];
       name.map((value, i) => {
         //
         if (value.includes(",")) {
