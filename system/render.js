@@ -15,7 +15,10 @@ async function render(path, data_, cfg) {
     beforeRender({ data }) {
       return {
         sys: {
-          scale: `style=zoom:${cfg.pct || (config().img_quality / 100) * 2.4 || 2.4 * 0.8}`,
+          // 缩放必须用 transform:scale：TRSS 的 puppeteer 按 boundingBox 截图，
+          // 而 Chromium 101 的 getBoundingClientRect 不含 CSS zoom 的放大，
+          // 用 zoom 时截图只会覆盖左上角 1/pct 区域，导致右侧和底部被裁。
+          scale: `style=transform:scale(${cfg.pct || (config().img_quality / 100) * 2.4 || 2.4 * 0.8})`,
         },
         ...data_,
         ppath: data_.ppath || "../../../../../plugins/xhh/resources/",
