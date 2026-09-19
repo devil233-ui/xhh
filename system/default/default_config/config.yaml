@@ -118,6 +118,11 @@ abyss_report_repos: |-
 abyss_report_gs_version: ''
 abyss_report_sr_version: ''
 
+#米游社自动过码服务地址（撞验证码时自动过码并重试，用户无感）：
+#服务用 /root/geetest-solver（pm2 名 geetest-solver），填 http://127.0.0.1:8766/solve；
+#没部署该服务时填 ""，撞码会退回提示用户稍后再试。
+auto_verify_addr: http://127.0.0.1:8766/solve
+
 #新增功能插件优先级（数字越小越优先，修改后需要重启）
 tl_priority: -99
 user_priority: -666
