@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import "./utils/ckAutoRefresh.js"; // ck 失效全局自愈：加载即对 genshin checkCode 打补丁
 import yaml from "./system/yaml.js";
 
 logger.info("\x1B[31m---------៷>ᴗ<៷---------\x1B[0m");

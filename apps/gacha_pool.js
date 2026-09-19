@@ -1345,6 +1345,23 @@ export class xhh_gacha_pool extends plugin {
     }
   }
 
+  // 解析「X.X版本活动祈愿预告」公告正文里的真实祈愿起止时间。
+  // 例：「本期活动祈愿时间为 2026/09/01 18:00 ~ 2026/09/22 14:59 。」
+  // 返回 '2026/09/01 18:00~2026/09/22 14:59'；解析失败返回空串（调用方回退到估算）。
+  parseGsPreviewTime(text = '') {
+    const seg = String(text || '').match(/活动祈愿时间[为:：]?([^。\n]{0,120})/)?.[1] || '';
+    if (!seg) return '';
+    const times = [...seg.matchAll(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/g)];
+    if (times.length < 2) return '';
+    const normDate = m => `${m[1]}/${String(m[2]).padStart(2, '0')}/${String(m[3]).padStart(2, '0')}`;
+    const start = normDate(times[0]);
+    const end = normDate(times[times.length - 1]);
+    // 开始端写「版本更新后」缺时分时用 18:00 兜底；结束端缺时分用 14:59 兜底。
+    const startTime = times[0][4] ? String(times[0][4]).slice(0, 5) : '18:00';
+    const endTime = times[times.length - 1][4] ? String(times[times.length - 1][4]).slice(0, 5) : '14:59';
+    return `${start} ${startTime}~${end} ${endTime}`;
+  }
+
   async syncGsLocalFromOfficial(records = []) {
     // 官方当前版本号：优先公告标题 → 正文「X.X版本」→ 本地 CURRENT_VERSION
     // （原神祈愿公告标题通常不带版本号，需从正文或本地库回退）
@@ -1406,9 +1423,22 @@ export class xhh_gacha_pool extends plugin {
     if (names.length < 2) return '';
     const wpnLine = [...names, ...(wpnPools[0]?.up?.a || []).map(n => this.gsLocalShortName(n)).filter(Boolean).slice(0, 5)].join(',');
     imgs.push(wpnPools[0]?.images?.[0] || wpnPools[0]?.cover || '');
-    // 时间：以角色池公告发布时间为卡池开启日，按 3 周估算结束（可人工修正）
-    const startTs = charPools[0]?.createdAt || Date.now();
-    const key = `【${ver}】${this.fmtTs(startTs, '11:00')}~${this.fmtTs(startTs + 21 * 86400000, '15:00')}`;
+    // 时间：优先解析官方「活动祈愿预告」公告正文里的真实起止时间；
+    // 解析不到时回退到「公告发布时间 + 3 周」估算（可人工修正）。
+    let timeRange = '';
+    const previews = records
+      .filter(r => /活动祈愿预告/.test(r.title || ''))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (previews.length) {
+      const want = phase === '下半' ? /第二期|（2）|（其二）|下半/ : /第一期|（1）|（其一）|上半/;
+      const target = previews.find(r => want.test(r.title || '')) || previews[0];
+      timeRange = this.parseGsPreviewTime(target.contentText || '');
+    }
+    if (!timeRange) {
+      const startTs = charPools[0]?.createdAt || Date.now();
+      timeRange = `${this.fmtTs(startTs, '11:00')}~${this.fmtTs(startTs + 21 * 86400000, '15:00')}`;
+    }
+    const key = `【${ver}】${timeRange}`;
     try {
       const nextDate = { [key]: [...roleLine, wpnLine], ...data.date };
       const nextImgs = { [`【${ver}】`]: imgs.filter(Boolean), ...(data.imgs || {}) };
