@@ -421,6 +421,12 @@ export class Wiki extends plugin {
       for (const { method, args } of checkTypes) {
         if (await this[method](...args, true)) return true;
       }
+    } else if (/^[＃#]/.test(e.msg) && !starPrefix) {
+      // # 前缀 = 原神（用户约定 原神# 星铁* 绝区零%）：只查原神，不做其他游戏兜底
+      for (const { method, args } of checkTypes) {
+        if (await this[method](...args)) return true;
+      }
+      logger.mark(`[xhh][图鉴] ${name} 原神侧未命中（新条目请确认米游社图鉴已收录）`);
     } else {
       for (const { method, args } of checkTypes) {
         if (await this[method](...args)) return true;
@@ -1252,6 +1258,12 @@ export class Wiki extends plugin {
       const miao = await miaoResolve(name, 'char', isSr ? 'sr' : 'gs');
       if (miao) rname = miao;
       if (!rname) rname = atlasResolve(name, isSr ? 'sr' : 'gs', 'char');
+      // 仍没有时（新角色，各别名词表滞后）：原名直接交给米游社图鉴列表精确匹配，
+      // 命中即可出图，免维护本地表
+      if (!rname) {
+        const ret = await mys.data(name, 'js', isSr);
+        if (ret?.id) rname = name;
+      }
     }
     if (rname) {
       const { id } = await mys.data(rname, 'js', isSr, isZZZ, isBH3);
