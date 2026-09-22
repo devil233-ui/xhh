@@ -327,6 +327,11 @@ export class Wiki extends plugin {
           // 避免宽匹配吞掉普通聊天与其他插件的命令。
           reg: '^[#%*]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*(.+(?:专武|专属武器|专属音擎|签名音擎|专属驱动盘|推荐驱动盘|驱动盘套|驱动套))$',
           fnc: 'illustrated_book',
+          // 强制游戏前缀 + 图鉴可选：原神 #、星铁 *、绝区零 %（* 前缀的星铁语义沿用本插件约定）。
+          // 有前缀即是明确指令意图，图鉴二字可省（#可可莉、*希儿、%绯月）；
+          // 无前缀的消息不做可选——不吞普通聊天和其他插件命令。
+          reg: '^([#%*])(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*([^\\s](?:.*?))(?:图鉴)?$',
+          fnc: 'illustrated_book',
         },
       ],
     });
@@ -368,7 +373,7 @@ export class Wiki extends plugin {
     // 本项目约定：* 前缀代表星铁（同 sr_logs.js），# 前缀代表原神
     const starPrefix = /^[＃#%]*\*/.test(e.msg);
     const isSr = starPrefix || e.msg.includes('星铁');
-    const isZZZ = e.msg.includes('绝区零') || e.msg.includes('ZZZ');
+    const isZZZ = e.msg.includes('绝区零') || e.msg.includes('ZZZ') || /^[＃#]*%/.test(e.msg);
     const isBH3 = e.msg.includes('崩坏3') || e.msg.includes('崩坏三') || e.msg.includes('崩三') || e.msg.includes('BH3');
     let name = e.msg
       .replace(/^[#%*]*/, '')
@@ -762,6 +767,7 @@ export class Wiki extends plugin {
     const detail = await this.getZzzRoleDetail(roleName);
     if (!detail) return false;
 
+    this._zzzExclusiveRole = roleName;
     if (wantDrive) {
       const drives = await this.findZzzRecommendDrives(detail);
       if (!drives.length) {
@@ -799,6 +805,8 @@ export class Wiki extends plugin {
   }
 
   async findZzzRecommendDrives(detail = {}) {
+    const localDrives = this.findLocalExclusive(this._zzzExclusiveRole || '', 'drive');
+    if (localDrives) return localDrives.split(/[、,，/]/).map(t => t.trim()).filter(Boolean);
     const list = await this.getZzzWikiEntries(46);
     const text = JSON.stringify(detail.content || {});
     const hits = [];
@@ -808,7 +816,38 @@ export class Wiki extends plugin {
     return [...new Set(hits)].slice(0, 2);
   }
 
+  // 本地专属装备映射（数据源滞后时的手工登记，命中优先）：
+  // 米游社官方 wiki / nanoka / ZZZ-Plugin 都只存条目本身，不带「角色→专属装备」关联，
+  // 新角色上线到数据源补齐之间有空窗，这里人工兜底。表在 system/default/zzz_exclusive_map.yaml。
+  loadZzzExclusiveMap() {
+    if (this._zzzExclusiveMap) return this._zzzExclusiveMap;
+    try {
+      const data = yaml.get('./plugins/xhh/system/default/zzz_exclusive_map.yaml') || {};
+      this._zzzExclusiveMap = Object.entries(data).flatMap(([role, v]) =>
+        (Array.isArray(v) ? v : [v]).map(x => {
+          const [wq, drive] = String(x).split('|').map(t => String(t || '').trim());
+          return { role, wq, drive };
+        })
+      );
+    } catch (_) {
+      this._zzzExclusiveMap = [];
+    }
+    return this._zzzExclusiveMap;
+  }
+
+  findLocalExclusive(roleName = '', kind = 'wq') {
+    const key = String(roleName || '').replace(/[\s·・]/g, '');
+    if (!key) return '';
+    for (const item of this.loadZzzExclusiveMap()) {
+      const rk = String(item.role || '').replace(/[\s·・]/g, '');
+      if (rk && (rk === key || rk.includes(key) || key.includes(rk))) return item[kind] || '';
+    }
+    return '';
+  }
+
   async findZzzSignatureWeapon(roleName = '', detail = {}) {
+    const local = this.findLocalExclusive(roleName, 'wq');
+    if (local) return local;
     const direct = await this.findZzzWeaponInRoleDetail(detail);
     if (direct) return direct;
     const c = detail.content || {};
