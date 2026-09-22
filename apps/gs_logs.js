@@ -1,37 +1,52 @@
-import { yaml, makeForwardMsg, config } from "#xhh";
+import { yaml, makeForwardMsg, config, pluginPriority } from '#xhh';
 
-const path = "./plugins/xhh/system/default/gslogs.yaml";
-import common from "../../../lib/common/common.js";
+const path = './plugins/xhh/system/default/gslogs.yaml';
+import common from '../../../lib/common/common.js';
+import { xhh_gacha_pool } from './gacha_pool.js';
+const GS_CURRENT_VERSION = '6.7';
 
 export class gs_logs extends plugin {
   constructor() {
     super({
-      name: "[小花火]原神卡池历史",
-      dsc: "",
-      event: "message",
-      priority: -99,
+      name: '[小花火]原神卡池历史',
+      dsc: '',
+      event: 'message',
+      priority: pluginPriority('gs_logs', -99),
       rule: [
         {
-          reg: "^#*(.*)卡池$",
-          fnc: "gslogs",
+          reg: '^(?!#*(?:小花火)?原神(?:当前|本期|当期)?卡池$)#*(.*)卡池$',
+          fnc: 'gslogs',
         },
         {
-          reg: "^#*(原神)?卡池(剩余|剩下)?时间$",
-          fnc: "time",
+          reg: '^#*(原神)?卡池(剩余|剩下)?时间$',
+          fnc: 'time',
         },
       ],
     });
   }
   async gslogs(e) {
+    const normalized = String(e?.msg || '')
+      .replace(/[\u200b-\u200f\ufeff]/g, '')
+      .replace(/[＃井]/g, '#')
+      .replace(/\s+/g, '');
+    // 兜底：旧历史卡池如果抢到“原神卡池/#原神卡池”，直接转统一卡池图片。
+    if (/^#*(?:小花火)?原神(?:当前|本期|当期)?卡池$/.test(normalized)) {
+      e.msg = normalized;
+      return new xhh_gacha_pool(e).gsCurrentPool(e);
+    }
     if (!config().gs_logs) return false;
-    // 官方/米游社卡池交给全游戏卡池处理，避免旧历史卡池规则抢占命令。
-    if (/(?:米游社|官方)/.test(e.msg)) return false;
-    let type = e.msg.replace(/#|卡池/g, "").trim();
-    if (!type.includes(".")) {
+    let type = e.msg.replace(/#|卡池|原神/g, '').trim();
+    if (!type) {
+      e.msg = '#原神卡池';
+      return new xhh_gacha_pool(e).gsCurrentPool(e);
+    }
+    // 崩三/绝区零卡池由 apps/gacha_pool.js 单独处理，避免被原神卡池的宽泛正则抢走。
+    if (/^(崩三|崩坏3|崩坏三|BH3|绝区零|ZZZ)/i.test(type)) return false;
+    if (!type.includes('.')) {
       let m = 0;
       let gsnames = yaml.get(
-        "./plugins/xhh/system/default/gs_js_names.yaml",
-        "utf-8"
+        './plugins/xhh/system/default/gs_js_names.yaml',
+        'utf-8'
       );
       for (let i in gsnames) {
         if (gsnames[i].includes(type)) {
@@ -43,7 +58,7 @@ export class gs_logs extends plugin {
 
       if (!m) {
         var wqnames = await yaml.get(
-          "./plugins/xhh/system/default/wqname.yaml"
+          './plugins/xhh/system/default/wqname.yaml'
         );
         for (let wqname in wqnames) {
           for (let wq of wqnames[wqname]) {
@@ -54,52 +69,54 @@ export class gs_logs extends plugin {
     }
     let msg = [];
     //特殊处理1.3版本
-    if (type == "1.3上半" || type == "1.3下半") {
-      var type2 = type + "②";
+    if (type == '1.3上半' || type == '1.3下半') {
+      var type2 = type + '②';
       let a = await this.getmsg(type2);
-      var type1 = type + "①";
+      var type1 = type + '①';
       let b = await this.getmsg(type1);
       msg = a.concat(b);
     } else {
       msg = await this.getmsg(type);
     }
+    if (!msg.length && type.replace(/上半|下半/g, '') === GS_CURRENT_VERSION) {
+      return e.reply(`原神当前版本已标记为 ${GS_CURRENT_VERSION}，但 xhh 的原神历史卡池库还没有录入 ${type} 的具体UP信息。`);
+    }
     if (!msg.length) return false;
-    if (msg.length > 10) msg = await makeForwardMsg(e, msg, type + "卡池");
+    if (msg.length > 10) msg = await makeForwardMsg(e, msg, type + '卡池');
     return e.reply(msg);
   }
 
   async time(e) {
     if (!config().sr_strategy) return false;
-    let data = (await yaml.get(path)) || {};
-    let date_list = Object.keys(data.date || {});
-    if (!date_list.length) return false;
+    let data = await yaml.get(path);
+    let date_list = Object.keys(data.date);
+    if (!date_list.some(v => v.includes(`【${GS_CURRENT_VERSION}`))) {
+      return e.reply(`原神当前版本已标记为 ${GS_CURRENT_VERSION}，但当前卡池详情还没有录入。`);
+    }
     let _date = date_list[0];
-    let type = _date.match("【(.*)】")[1];
+    let type = _date.match('【(.*)】')[1];
     let msg;
     msg = await this.getmsg(type);
-    if (!Array.isArray(msg)) return false;
     //计算时间
-    let time = _date.split("~")[1];
+    let time = _date.split('~')[1];
     let ptime = new Date().getTime();
     let ftime = new Date(time).getTime();
     let datec = ftime - ptime;
     var dayDiff = Math.floor(datec / (24 * 3600 * 1000)) + 1; //计算出相差天数
-    let days = "卡池剩余时间：" + dayDiff + "天 ";
-    if (dayDiff == "0") days = "该卡池即将结束";
+    let days = '卡池剩余时间：' + dayDiff + '天 ';
+    if (dayDiff == '0') days = '该卡池即将结束';
     msg.push(days);
     e.reply(msg);
   }
 
   async getmsg(type) {
-    let data = (await yaml.get(path)) || {};
-    let date = data.date || {};
-    let imgs = data.imgs || {};
-    let versions = data.ver || {};
-    let date_list = Object.keys(date);
-    let ver = Object.keys(versions);
+    let data = await yaml.get(path);
+    if (!data || !data.date || !data.ver) return [];
+    let date_list = Object.keys(data.date);
+    let ver = Object.keys(data.ver);
     let date_name = [];
     date_list.map(val => {
-      date_name.push(val.match("【(.*)】")[1]);
+      date_name.push(val.match('【(.*)】')[1]);
     });
     let n;
     let list;
@@ -111,7 +128,7 @@ export class gs_logs extends plugin {
     //判断[[x.x上半/下半],[4-6].[0-8]]
     for (var val of date_name) {
       n = date_name.indexOf(val);
-      list = imgs[`【${val}】`] || [];
+      list = data.imgs[`【${val}】`];
       if (val == type || String(val.match(/[4-6]\.[0-8]/g)) == type) {
         msg.push(date_list[n]);
         for (var img of list) {
@@ -125,23 +142,23 @@ export class gs_logs extends plugin {
     for (var val of ver) {
       let tu;
       if (val == type) {
-        tu = versions[type];
+        tu = data.ver[type];
 
         //QQ不支持发https://upload-bbs.miyoushe.com/
-        if (tu?.includes("https://upload-bbs.miyoushe.com/")) {
-          let tupath = "./plugins/xhh/temp/[1-3].[0-8]卡池.jpg";
+        if (tu?.includes('https://upload-bbs.miyoushe.com/')) {
+          let tupath = `./plugins/xhh/temp/[1-3].[0-8]卡池.jpg`;
           await common.downFile(tu, tupath);
           msg.push(segment.image(tupath));
         } else {
           msg.push(segment.image(tu));
         }
-      } else if (val + ".0" == type) {
-        type = type.replace(/.0/g, "");
-        tu = versions[type];
+      } else if (val + '.0' == type) {
+        type = type.replace(/.0/g, '');
+        tu = data.ver[type];
 
         //QQ不支持发https://upload-bbs.miyoushe.com/
-        if (tu?.includes("https://upload-bbs.miyoushe.com/")) {
-          let tupath = "./plugins/xhh/temp/[1-3].[0-8]卡池.jpg";
+        if (tu?.includes('https://upload-bbs.miyoushe.com/')) {
+          let tupath = `./plugins/xhh/temp/[1-3].[0-8]卡池.jpg`;
           await common.downFile(tu, tupath);
           msg.push(segment.image(tupath));
         } else {
@@ -154,13 +171,13 @@ export class gs_logs extends plugin {
     //判断xx角色卡池,xx武器卡池
     for (var val of date_list) {
       n = date_list.indexOf(val);
-      imgname = val.match("【(.*)】")[0];
-      list = imgs[imgname] || [];
-      name = date[val] || [];
+      imgname = val.match('【(.*)】')[0];
+      list = data.imgs[imgname];
+      name = data.date[val];
       name.map((value, i) => {
         //
-        if (value.includes(",")) {
-          wq_hc = value.split(",");
+        if (value.includes(',')) {
+          wq_hc = value.split(',');
           for (var v of wq_hc) {
             if (v == type) {
               msg.push(date_list[n]);

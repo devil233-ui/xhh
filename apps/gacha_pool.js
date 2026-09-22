@@ -18,7 +18,7 @@ const BH3_MARK_ICON = 'bh3_note/bh3_pool_banner.png';
 const BH3_CARD_FALLBACK_ICON = 'bh3_note/bh3_icon.png';
 const ZZZ_MARK_ICON = 'zzz_md/imgs/ellen.png';
 const GS_MARK_ICON = 'gs_mark/paimon.png';
-const SR_MARK_ICON = 'gacha_pool/mys.png';
+const SR_MARK_ICON = '/root/TRSS_AllBot/TRSS-Yunzai/plugins/miao-plugin/resources/meta-sr/character/三月七/imgs/splash.webp';
 const MYS_MARK_ICON = 'gacha_pool/mys.png';
 const CURRENT_VERSION = { gs: '7.0', sr: '4.5', zzz: '3.1', bh3: '9.0' };
 const ZZZ_VERSION_UP_NAMES = {
@@ -38,33 +38,36 @@ export class xhh_gacha_pool extends plugin {
       priority: pluginPriority('gacha_pool', -1000000000),
       rule: [
         // 最常用的原神当前卡池放最前，使用最简单正则，避免被通用“xx卡池”规则误判。
-        { reg: '^#?原神卡池$', fnc: 'gsCurrentPool' },
-        { reg: '^#?原神(当前|本期|当期)卡池$', fnc: 'gsCurrentPool' },
-        { reg: '^#*(小花火)?(崩三|崩坏3|崩坏三|BH3)(当前|本期|当期)?(卡池|补给)$', fnc: 'bh3CurrentPool' },
-        { reg: '^#*(小花火)?(崩三|崩坏3|崩坏三|BH3)v?(\\d+\\.\\d+)(上半|下半)?(卡池|补给)$', fnc: 'bh3VersionPool' },
-        { reg: '^#*(小花火)?(崩三|崩坏3|崩坏三|BH3)(卡池|补给)(统计|记录|历史|全)$', fnc: 'bh3AllPool' },
+        { reg: '^#?(?:xhh)?原神卡池$', fnc: 'gsCurrentPool' },
+        { reg: '^#?(?:xhh)?原神(当前|本期|当期)卡池$', fnc: 'gsCurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(崩三|崩坏3|崩坏三|BH3)(当前|本期|当期)?(卡池|补给)$', fnc: 'bh3CurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(崩三|崩坏3|崩坏三|BH3)v?(\\d+\\.\\d+)(上半|下半)?(卡池|补给)$', fnc: 'bh3VersionPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(崩三|崩坏3|崩坏三|BH3)(卡池|补给)(统计|记录|历史|全)$', fnc: 'bh3AllPool' },
         // 原神卡池
-        { reg: '^[#＃井]*\\s*(?:小花火)?\\s*原神\\s*(?:当前|本期|当期)?\\s*卡池$', fnc: 'gsCurrentPool' },
-        { reg: '^[#＃井]*\\s*(?:小花火)?\\s*原神\\s*v?(\\d+\\.\\d+)\\s*(上半|下半)?\\s*卡池$', fnc: 'gsVersionPool' },
-        { reg: '^#*(小花火)?原神(?!官方|米游社)(.+)卡池$', fnc: 'gsNameHistory' },
-        { reg: '^#*(小花火)?原神(卡池)(统计|记录|历史|全)$', fnc: 'gsAllPool' },
+        { reg: '^[#＃井]*(?:xhh)?\\s*(?:小花火)?\\s*原神\\s*(?:当前|本期|当期)?\\s*卡池$', fnc: 'gsCurrentPool' },
+        { reg: '^[#＃井]*(?:xhh)?\\s*(?:小花火)?\\s*原神\\s*v?(\\d+\\.\\d+)\\s*(上半|下半)?\\s*卡池$', fnc: 'gsVersionPool' },
+        { reg: '^#*(?:xhh)?(小花火)?原神(统计|记录|历史|全部|全|时间轴)卡池$', fnc: 'gsAllPool' },
+        { reg: '^#*(?:xhh)?(小花火)?原神(?!官方|米游社)(.+)卡池$', fnc: 'gsNameHistory' },
+        { reg: '^#*(?:xhh)?(小花火)?原神(卡池)(统计|记录|历史|全)$', fnc: 'gsAllPool' },
         // 星铁卡池
-        { reg: '^#*(小花火)?(星铁|崩铁|星穹铁道)(当前|本期|当期)?(卡池|跃迁)$', fnc: 'srCurrentPool' },
-        { reg: '^#*(小花火)?(星铁|崩铁|星穹铁道)v?(\\d+\\.\\d+)(上半|下半)?(卡池|跃迁)$', fnc: 'srVersionPool' },
-        { reg: '^#*(小花火)?(星铁|崩铁|星穹铁道)(?!v?\\d+\\.\\d+)(?!官方|米游社)(.+)(卡池|跃迁)$', fnc: 'srNameHistory' },
+        { reg: '^#*(?:xhh)?(小花火)?(星铁|崩铁|星穹铁道)(当前|本期|当期)?(卡池|跃迁)$', fnc: 'srCurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(星铁|崩铁|星穹铁道)v?(\\d+\\.\\d+)(上半|下半)?(卡池|跃迁)$', fnc: 'srVersionPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(星铁|崩铁|星穹铁道)(统计|记录|历史|全部|全|时间轴)(卡池|跃迁)$', fnc: 'srAllPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(星铁|崩铁|星穹铁道)(?!v?\\d+\\.\\d+)(?!官方|米游社)(.+)(卡池|跃迁)$', fnc: 'srNameHistory' },
         // 官方/米游社卡池必须在 bh3NameHistory 之前，否则"崩三官方卡池"会被误判为角色名
-        { reg: '^#*(小花火)?((原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3))?(米游社|官方)?(更新|刷新)卡池(数据)?$', fnc: 'refreshOfficialPools' },
-        { reg: '^#*(小花火)?(全游戏|全部|所有)?(当前|本期|当期)卡池$', fnc: 'allCurrentPool' },
-        { reg: '^#*(小花火)?(原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3)?(米游社|官方)(当前|本期|当期)?卡池$', fnc: 'officialCurrentPool' },
-        { reg: '^#*(小花火)?(原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3)(\\d+\\.\\d+)(米游社|官方)卡池$', fnc: 'officialVersionPool' },
-        { reg: '^#*(小花火)?(崩三|崩坏3|崩坏三|BH3)(?!v?\\d+\\.\\d+)(?!官方|米游社)(.+)(卡池|补给)$', fnc: 'bh3NameHistory' },
-        { reg: '^#*(小花火)?(绝区零|ZZZ)(当前|本期|当期)?卡池$', fnc: 'zzzCurrentPool' },
-        { reg: '^#*(小花火)?(绝区零|ZZZ)v?(\\d+\\.\\d+)(上半|下半)?卡池$', fnc: 'zzzVersionPool' },
-        { reg: '^#*(小花火)?(绝区零|ZZZ)(?!v?\\d+\\.\\d+)(.+)卡池$', fnc: 'zzzNameHistory' },
-        { reg: '^#*(小花火)?(绝区零|ZZZ)(.+)(卡池|复刻)(统计|记录|历史)$', fnc: 'zzzNameHistory' },
-        { reg: '^#*(小花火)?(绝区零|ZZZ)(卡池|复刻)(统计|记录|历史)$', fnc: 'zzzAllPool' },
+        { reg: '^#*(?:xhh)?(小花火)?((原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3))?(米游社|官方)?(更新|刷新)卡池(数据)?$', fnc: 'refreshOfficialPools' },
+        { reg: '^#*(?:xhh)?(小花火)?(全游戏|全部|所有)?(当前|本期|当期)卡池$', fnc: 'allCurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3)?(米游社|官方)(当前|本期|当期)?卡池$', fnc: 'officialCurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(原神|星铁|崩铁|星穹铁道|绝区零|ZZZ|崩三|崩坏3|崩坏三|BH3)(\\d+\\.\\d+)(米游社|官方)卡池$', fnc: 'officialVersionPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(崩三|崩坏3|崩坏三|BH3)(?!v?\\d+\\.\\d+)(?!官方|米游社)(.+)(卡池|补给)$', fnc: 'bh3NameHistory' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)(当前|本期|当期)?卡池$', fnc: 'zzzCurrentPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)v?(\\d+\\.\\d+)(上半|下半)?卡池$', fnc: 'zzzVersionPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)(统计|记录|历史|全部|全|时间轴)卡池$', fnc: 'zzzAllPool' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)(?!v?\\d+\\.\\d+)(.+)卡池$', fnc: 'zzzNameHistory' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)(.+)(卡池|复刻)(统计|记录|历史)$', fnc: 'zzzNameHistory' },
+        { reg: '^#*(?:xhh)?(小花火)?(绝区零|ZZZ)(卡池|复刻)(统计|记录|历史)$', fnc: 'zzzAllPool' },
         // 类似"雷神卡池/德莉莎卡池/白厄卡池"的用法：依次查绝区零、崩三、星铁、原神
-        { reg: '^(?!#*(?:小花火)?(?:原神|星铁|崩铁|崩三|崩坏3|崩坏三|BH3|绝区零|ZZZ))#*(小花火)?([\u4e00-\u9fa5A-Za-z0-9·・•!！「」『』（）()]{1,16})(卡池|复刻)(统计|记录|历史)?$', fnc: 'genericNameHistory' }
+        { reg: '^(?!#*(?:xhh)?(?:小花火)?(?:原神|星铁|崩铁|崩三|崩坏3|崩坏三|BH3|绝区零|ZZZ))#*(?:xhh)?(小花火)?([\u4e00-\u9fa5A-Za-z0-9·・•!！「」『』（）()]{1,16})(卡池|复刻)(统计|记录|历史)?$', fnc: 'genericNameHistory' }
       ]
     });
   }
@@ -1242,6 +1245,23 @@ export class xhh_gacha_pool extends plugin {
     return hhmm ? `${date} ${hhmm}` : date;
   }
 
+  // 解析「X.X版本活动祈愿预告」公告正文里的真实祈愿起止时间。
+  // 例：「本期活动祈愿时间为 2026/09/01 18:00 ~ 2026/09/22 14:59 。」
+  // 返回 '2026/09/01 18:00~2026/09/22 14:59'；解析失败返回空串（调用方回退到估算）。
+  parseGsPreviewTime(text = '') {
+    const seg = String(text || '').match(/活动祈愿时间[为:：]?([^。\n]{0,120})/)?.[1] || '';
+    if (!seg) return '';
+    const times = [...seg.matchAll(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/g)];
+    if (times.length < 2) return '';
+    const normDate = m => `${m[1]}/${String(m[2]).padStart(2, '0')}/${String(m[3]).padStart(2, '0')}`;
+    const start = normDate(times[0]);
+    const end = normDate(times[times.length - 1]);
+    // 开始端写「版本更新后」缺时分时用 18:00 兜底；结束端缺时分用 14:59 兜底。
+    const startTime = times[0][4] ? String(times[0][4]).slice(0, 5) : '18:00';
+    const endTime = times[times.length - 1][4] ? String(times[times.length - 1][4]).slice(0, 5) : '14:59';
+    return `${start} ${startTime}~${end} ${endTime}`;
+  }
+
   syncSrImagesFromOfficial(records = []) {
     // 用官方公告列表为本地已有条目补背景图，即使正文为空也能更新图片。
     const history = this.loadSrPoolHistory();
@@ -1345,23 +1365,6 @@ export class xhh_gacha_pool extends plugin {
     }
   }
 
-  // 解析「X.X版本活动祈愿预告」公告正文里的真实祈愿起止时间。
-  // 例：「本期活动祈愿时间为 2026/09/01 18:00 ~ 2026/09/22 14:59 。」
-  // 返回 '2026/09/01 18:00~2026/09/22 14:59'；解析失败返回空串（调用方回退到估算）。
-  parseGsPreviewTime(text = '') {
-    const seg = String(text || '').match(/活动祈愿时间[为:：]?([^。\n]{0,120})/)?.[1] || '';
-    if (!seg) return '';
-    const times = [...seg.matchAll(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/g)];
-    if (times.length < 2) return '';
-    const normDate = m => `${m[1]}/${String(m[2]).padStart(2, '0')}/${String(m[3]).padStart(2, '0')}`;
-    const start = normDate(times[0]);
-    const end = normDate(times[times.length - 1]);
-    // 开始端写「版本更新后」缺时分时用 18:00 兜底；结束端缺时分用 14:59 兜底。
-    const startTime = times[0][4] ? String(times[0][4]).slice(0, 5) : '18:00';
-    const endTime = times[times.length - 1][4] ? String(times[times.length - 1][4]).slice(0, 5) : '14:59';
-    return `${start} ${startTime}~${end} ${endTime}`;
-  }
-
   async syncGsLocalFromOfficial(records = []) {
     // 官方当前版本号：优先公告标题 → 正文「X.X版本」→ 本地 CURRENT_VERSION
     // （原神祈愿公告标题通常不带版本号，需从正文或本地库回退）
@@ -1440,11 +1443,13 @@ export class xhh_gacha_pool extends plugin {
     }
     const key = `【${ver}】${timeRange}`;
     try {
-      const nextDate = { [key]: [...roleLine, wpnLine], ...data.date };
+      // 同一版本已有记录时保留原条目，避免 key 时间估算不一致导致同一版本重复叠加。
+      const sameVerKey = Object.keys(data.date).find(k => k.startsWith(`【${ver}】`));
+      const nextDate = sameVerKey ? data.date : { [key]: [...roleLine, wpnLine], ...data.date };
       const nextImgs = { [`【${ver}】`]: imgs.filter(Boolean), ...(data.imgs || {}) };
       fs.writeFileSync(GS_POOL_HISTORY_YAML_PATH, YAML.stringify({ date: nextDate, imgs: nextImgs }), 'utf-8');
       if (CURRENT_VERSION.gs !== version) CURRENT_VERSION.gs = version;
-      return `原神：本地库已自动同步至 v${ver}`;
+      return sameVerKey ? `原神：本地库已含 v${ver} 记录，跳过重复写入` : `原神：本地库已自动同步至 v${ver}`;
     } catch (err) {
       logger.error('[xhh][gacha_pool] gslogs.yaml 自动同步写入失败:', err);
       return '';
@@ -1749,7 +1754,7 @@ ${r.summary || ''}`;
 
   async zzzNameHistory(e) {
     logger.mark('[xhh][gacha_pool] 命中绝区零名称卡池:', e.msg);
-    const name = e.msg.replace(/^#*(小花火)?(绝区零|ZZZ)/, '').replace(/(卡池|复刻)(统计|记录|历史)$/, '').replace(/卡池$/, '').trim();
+    const name = e.msg.replace(/^#*(?:xhh)?(小花火)?(绝区零|ZZZ)/, '').replace(/(卡池|复刻)(统计|记录|历史)$/, '').replace(/卡池$/, '').trim();
     return this.replyZzzNameHistory(e, name, false);
   }
 
@@ -1763,7 +1768,7 @@ ${r.summary || ''}`;
       e.msg = normalized;
       return this.gsCurrentPool(e);
     }
-    const name = normalized.replace(/^#*(小花火)?/, '').replace(/(卡池|复刻)(统计|记录|历史)?$/, '').trim();
+    const name = normalized.replace(/^#*(?:xhh)?(小花火)?/, '').replace(/(卡池|复刻)(统计|记录|历史)?$/, '').trim();
     const cnName = name.replace(/[^\u4e00-\u9fa5]/g, '');
     // 兜底中的兜底：如果通用名称规则已经把“#原神卡池”吃进来了，name 会变成“原神”。
     // 这时不要继续查历史名称，直接转当前卡池。
@@ -2221,8 +2226,106 @@ ${r.summary || ''}`;
       return lines.join('\n');
     });
     const title = '绝区零全版本卡池记录';
-    const msg = chunks.length > 8 ? await makeForwardMsg(e, [title, ...chunks], title) : [title, ...chunks];
-    return e.reply(msg);
+    return this.replyAllPoolForward(e, title, chunks);
+  }
+
+  // 全量历史条目多，渲染长图容易超限，统一按版本分组生成文字转发。
+  buildAllPoolTextChunks(cards = []) {
+    const groups = [];
+    const map = new Map();
+    for (const c of cards) {
+      const v = c.version || '-';
+      if (!map.has(v)) { map.set(v, []); groups.push(v); }
+      map.get(v).push(c);
+    }
+    return groups.map(v => {
+      const lines = [`【v${String(v).replace(/^v/i, '')}】`];
+      for (const c of map.get(v)) {
+        const up = [`S-${c.s || '-'}`];
+        if (c.a) up.push(`A-${c.a}`);
+        lines.push(`${c.version || v} ◆ ${c.title || '卡池'}：${up.join(' | ')}`);
+      }
+      return lines.join('\n');
+    });
+  }
+
+  // OneBot 对单条转发有总量限制：原神全版本 ~100KB 文本整发会 res_id 上传失败，实测 ~20 节点（约 20KB）一批可发。
+  // 策略：按「估算字节 + 节点数」双阈值打包安全批次直接分批发；小数据才尝试单条整发；失败的单批再二分，仍失败退化纯文本。
+  static POOL_FORWARD_MAX_BYTES = 38 * 1024;
+  static POOL_FORWARD_MAX_NODES = 45;
+
+  async replyAllPoolForward(e, title, chunks = []) {
+    if (!chunks.length) return e.reply(`${title}：暂无数据`);
+    const totalBytes = chunks.reduce((sum, c) => sum + Buffer.byteLength(String(c)), 0);
+    if (chunks.length <= 8 && totalBytes < 20000) return e.reply([title, ...chunks].join('\n'));
+    if (chunks.length <= this.constructor.POOL_FORWARD_MAX_NODES && totalBytes < this.constructor.POOL_FORWARD_MAX_BYTES) {
+      try {
+        return await e.reply(await makeForwardMsg(e, chunks, title));
+      } catch (err) {
+        logger.warn?.(`[xhh][gacha_pool] ${title} 单条转发失败，改用安全分批:`, err?.message || err);
+      }
+    }
+    const batches = this.packPoolBatches(chunks);
+    let idx = 0;
+    for (const batch of batches) {
+      const label = batches.length > 1 ? `${title}（${++idx}/${batches.length}）` : title;
+      try {
+        await e.reply(await makeForwardMsg(e, batch, label));
+      } catch (err) {
+        logger.warn?.(`[xhh][gacha_pool] ${label} 转发失败，尝试对半拆分:`, err?.message || err);
+        await this.sendForwardSplit(e, batch, label);
+      }
+    }
+  }
+
+  // 按字节 + 节点数双阈值把版本块打包成安全批次。
+  packPoolBatches(chunks = [], maxBytes = this.constructor.POOL_FORWARD_MAX_BYTES, maxNodes = this.constructor.POOL_FORWARD_MAX_NODES) {
+    const batches = [];
+    let cur = [];
+    let size = 0;
+    for (const chunk of chunks) {
+      const len = Buffer.byteLength(String(chunk));
+      if (cur.length && (size + len > maxBytes || cur.length >= maxNodes)) {
+        batches.push(cur);
+        cur = [];
+        size = 0;
+      }
+      cur.push(chunk);
+      size += len;
+    }
+    if (cur.length) batches.push(cur);
+    return batches;
+  }
+
+  async sendForwardSplit(e, chunks, title) {
+    if (!chunks.length) return;
+    if (chunks.length === 1) {
+      return this.sendChunksAsText(e, chunks, title);
+    }
+    try {
+      await e.reply(await makeForwardMsg(e, chunks, title));
+    } catch (err) {
+      const mid = Math.ceil(chunks.length / 2);
+      await this.sendForwardSplit(e, chunks.slice(0, mid), title);
+      await this.sendForwardSplit(e, chunks.slice(mid), title);
+    }
+  }
+
+  async sendChunksAsText(e, chunks, title) {
+    const text = (title ? title + '\n\n' : '') + chunks.join('\n\n');
+    for (let i = 0; i < text.length; i += 3000) {
+      await e.reply(text.slice(i, i + 3000));
+    }
+  }
+
+  async srAllPool(e) {
+    logger.mark('[xhh][gacha_pool] 命中星铁全卡池:', e.msg);
+    const srOfficial = await officialPool.fetch('sr');
+    const cards = await this.loadSrLocalCards('', srOfficial.records || [], true);
+    if (!cards.length) return e.reply('星铁卡池数据获取失败，请稍后再试。');
+    const chunks = this.buildAllPoolTextChunks(cards);
+    const title = '星铁全版本卡池记录';
+    return this.replyAllPoolForward(e, title, chunks);
   }
 
   async srCurrentPool(e) {
@@ -2337,7 +2440,7 @@ ${r.summary || ''}`;
 
   async srNameHistory(e) {
     logger.mark('[xhh][gacha_pool] 命中星铁名称卡池:', e.msg);
-    const name = e.msg.replace(/^#*(小花火)?(星铁|崩铁|星穹铁道)/, '').replace(/(卡池|跃迁)$/, '').trim();
+    const name = e.msg.replace(/^#*(?:xhh)?(小花火)?(星铁|崩铁|星穹铁道)/, '').replace(/(卡池|跃迁)$/, '').trim();
     if (!name) return false;
     return this.replySrNameHistory(e, name, false);
   }
@@ -2558,8 +2661,14 @@ ${r.contentText || ''}
 ${r.summary || ''}`;
       const cleanText = clean(text);
       let score = 0;
-      // 联动/合作卡池优先使用带「联动」标题的公告图
-      if (isCollab && /联动/.test(r.title || '')) score += 20;
+      // 联动/合作卡池优先使用带「联动」标题的卡池公告图。
+      // 「联动跃迁说明」这类标题本质是卡池公告（正文含完整 UP 列表），不应被当作普通「活动说明」减分；
+      // 只有既带「说明」又不含卡池词（跃迁/祈愿/频段/补给）的公告图才排除。
+      if (isCollab && /联动/.test(r.title || '')) {
+        score += (/说明/.test(r.title || '') && !/跃迁|祈愿|频段|补给/.test(r.title || '')) ? -30 : 20;
+        // 标题直接带「跃迁」的是卡池公告本体，再额外加分，压过同期的「联动更新公告」。
+        if (/跃迁/.test(r.title || '')) score += 5;
+      }
       if (version && String(r.version || '').startsWith(version)) score += 8;
       if (/活动跃迁|跃迁/.test(text)) score += 5;
       if (weapon && /光锥|流光定影|真意之汇/.test(text)) score += 3;
@@ -2571,11 +2680,14 @@ ${r.summary || ''}`;
       }
     }
     if (!best || bestScore <= 0) return '';
-    // 取官方公告图片作为卡片背景；有多张时角色卡优先前段，光锥卡优先后段。
-    return weapon ? (best.imgs[1] || best.imgs[0]) : best.imgs[0];
+    const imgs = best.imgs.filter((v, i, a) => a.indexOf(v) === i);
+    // 联动公告详情接口的 cover 即横幅图（如「Fate[UBW] 联动跃迁说明」的 690x320 横图），
+    // 直接取首图；正文第一张（images[0]）反而是竖版封面小图（132x172），不能取。
+    if (isCollab) return imgs[0];
+    return weapon ? (imgs[1] || imgs[0]) : imgs[0];
   }
 
-  async loadSrLocalCards(type = '', officialRecords = []) {
+  async loadSrLocalCards(type = '', officialRecords = [], all = false) {
     const data = this.loadSrPoolHistory();
     if (!Array.isArray(data)) return [];
     const query = this.normalizeSrName(type);
@@ -2599,13 +2711,15 @@ ${r.summary || ''}`;
         this.clSrNames(item.gz_four || []).includes(query)
       );
       if (isCurrent && !ver.startsWith(currentVersion) && !timeActive) continue;
-      if (!isCurrent && !versionHit && !nameHit) continue;
+      if (!all && !isCurrent && !versionHit && !nameHit) continue;
       const itemImgs = (item.imgs || []).filter(Boolean);
-      const officialRoleBg = itemImgs[0] || this.getSrOfficialPoolImage(item, false, officialRecords);
+      const isCollab = /^联动/.test(ver);
+      // 联动/普通卡池统一优先使用官方公告图做背景：cover 与公告正文大图均为 690x320 横图，
+      // 适合铺满卡片；只有官方图缺失时才退到本地角色 splash，都没有则留空由模板显示纯渐变。
+      const officialRoleBg = itemImgs[0] || this.getSrOfficialPoolImage(item, false, officialRecords) || '';
       // 光锥公告图经常自带大标题文字，和卡片标题重叠；当前卡池统一使用同一期角色公告图做弱化背景。
       const officialWeaponBg = officialRoleBg || itemImgs[1] || this.getSrOfficialPoolImage(item, true, officialRecords);
       const roleBg = officialRoleBg || this.getSrCharacterSplash((item.js_five || [])[0]) || this.getSrCharacterSplash((item.js_five || [])[1]) || '';
-      const isCollab = /^联动/.test(ver);
       cards.push({
         version: ver,
         title: isCollab ? '联动跃迁' : (isCurrent ? '角色活动跃迁' : `${ver} 角色活动跃迁`),
@@ -2626,7 +2740,7 @@ ${r.summary || ''}`;
         img: officialWeaponBg || roleBg,
         weapon: true
       });
-      if (isCurrent || versionHit) continue;
+      if (!all && (isCurrent || versionHit)) continue;
     }
     return cards;
   }
@@ -2768,7 +2882,7 @@ ${r.summary || ''}`;
 
   async gsNameHistory(e) {
     logger.mark('[xhh][gacha_pool] 命中原神名称卡池:', e.msg);
-    const name = e.msg.replace(/^#*(小花火)?原神/, '').replace(/卡池$/, '').trim();
+    const name = e.msg.replace(/^#*(?:xhh)?(小花火)?原神/, '').replace(/卡池$/, '').trim();
     if (!name) return false;
     return this.replyGsNameHistory(e, name, false);
   }
@@ -2944,7 +3058,7 @@ ${r.summary || ''}`;
     return sections;
   }
 
-  async loadGsLocalCards(type = '') {
+  async loadGsLocalCards(type = '', all = false) {
     const data = this.loadGsPoolHistory();
     if (!data?.date) return [];
     const query = this.normalizeGsName(type);
@@ -3002,7 +3116,7 @@ ${r.summary || ''}`;
         const ver = dateKey.match('【(.*)】')?.[1] || '';
         if (!ver) continue;
         const versionHit = ver === query || ver.startsWith(query) || ver.replace(/上半|下半/g, '') === query;
-        if (versionHit) {
+        if (versionHit || all) {
           pushGsCard(dateKey, names, ver);
           continue;
         }
@@ -3071,19 +3185,18 @@ ${r.summary || ''}`;
 
   async gsAllPool(e) {
     logger.mark('[xhh][gacha_pool] 命中原神全卡池:', e.msg);
-    const { records, error, cache } = await officialPool.fetch('gs');
-    if (!records.length) return e.reply(`原神米游社公告卡池数据获取失败${error ? '：' + error : ''}`);
-    const cards = records.map(r => this.officialCard(r, '原神'));
-    const markIcon = this.getHeaderSplashFromCards('原神', cards, GS_MARK_ICON);
-    return this.renderPoolImage(e, {
-      game: '原神',
-      title: '原神全版本卡池记录',
-      subtitle: `共 ${records.length} 条记录 · 数据来源：米游社公告${cache ? '（缓存）' : ''}`,
-      mode: 'gs',
-      markIcon,
-      markWide: markIcon !== GS_MARK_ICON,
-      cards
-    });
+    // 全量历史条目多，长图渲染易超限失败，统一改为文字转发（与绝区零全卡池一致）。
+    let cards = await this.loadGsLocalCards('', true);
+    let source = '';
+    if (!cards.length) {
+      const { records, error } = await officialPool.fetch('gs');
+      if (!records.length) return e.reply(`原神卡池数据获取失败${error ? '：' + error : ''}`);
+      cards = records.map(r => this.officialCard(r, '原神'));
+      source = ' · 米游社公告';
+    }
+    const chunks = this.buildAllPoolTextChunks(cards);
+    const title = `原神全版本卡池记录${source}`;
+    return this.replyAllPoolForward(e, title, chunks);
   }
 
   async attachBh3OfficialCovers(cards = []) {
@@ -3244,7 +3357,7 @@ ${r.summary || ''}`;
 
   async bh3NameHistory(e) {
     logger.mark('[xhh][gacha_pool] 命中崩三名称卡池:', e.msg);
-    const name = e.msg.replace(/^#*(小花火)?(崩三|崩坏3|崩坏三|BH3)/, '').replace(/(卡池|补给)$/, '').trim();
+    const name = e.msg.replace(/^#*(?:xhh)?(小花火)?(崩三|崩坏3|崩坏三|BH3)/, '').replace(/(卡池|补给)$/, '').trim();
     if (!name) return false;
     return this.replyBh3NameHistory(e, name, false);
   }
@@ -3598,8 +3711,7 @@ ${r.summary || ''}`;
       return lines.join('\n');
     });
     const title = '崩坏3全版本补给记录';
-    const msg = chunks.length > 8 ? await makeForwardMsg(e, [title, ...chunks], title) : [title, ...chunks];
-    return e.reply(msg);
+    return this.replyAllPoolForward(e, title, chunks);
   }
 
   async bh3PoolUnsupported(e) {
