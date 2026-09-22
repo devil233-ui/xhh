@@ -814,6 +814,19 @@ export class Wiki extends plugin {
     const full = String(c.partner_info?.full_name || '');
     if (full.includes('·')) aliases.push(full.split('·')[0], full.split('·').slice(-1)[0]);
 
+    // 米游社官方 Wiki 音擎列表兜底：标题/摘要含角色名且为 S 级的即专属音擎
+    // （ZZZ-Plugin 的 WeaponId2Data 更新滞后，新角色会全部失配；官方 Wiki 实时）
+    try {
+      const wqList = await mys.zzz_official_list('wq');
+      const keys = [...new Set([roleName, ...(aliases || [])].map(v => String(v || '').trim()).filter(v => v.length >= 2))];
+      const hits = wqList.filter(item => {
+        const hay = `${item.title || ''}${item.summary || ''}`;
+        return keys.some(k => hay.includes(k));
+      });
+      const sHit = hits.find(item => /S级音擎/.test(item.summary || ''));
+      if (sHit?.title) return sHit.title;
+    } catch (_) { /* 官方 Wiki 不可达时继续走 ZZZ-Plugin 表 */ }
+
     const mapPath = './plugins/ZZZ-Plugin/resources/map/WeaponId2Data.json';
     if (!fs.existsSync(mapPath)) return '';
     let weaponMap = {};
@@ -1085,12 +1098,17 @@ export class Wiki extends plugin {
         break;
       }
     }
-    // 本地圣遗物/遗器表没命中时，用 Atlas 的武器/圣遗物别名词兜底（gs=圣遗物，sr=遗器，ZZZ/BH3 走各自表）
+    // 本地圣遗物/遗器表没命中时，用 Atlas 的别名词兜底（gs=圣遗物，sr=遗器，ZZZ/BH3 走各自表）。
+    // Atlas 命中即视为可查：直接拿正式名交给米游社图鉴列表按 title 匹配，
+    // 不再要求本地 yaml 先收录（新套装/新遗器免维护）。
     if (!sywHit && !isZZZ && !isBH3) {
       const atlas = atlasResolve(name, isSr ? 'sr' : 'gs', 'artifact');
-      if (atlas) name = atlas;
+      if (atlas) {
+        name = atlas;
+        sywHit = true;
+      }
     }
-    if (Object.keys(_name).includes(name)) {
+    if (sywHit || Object.keys(_name).includes(name)) {
       let data = await mys.data(name, isZZZ ? 'syw' : isBH3 ? 'syw' : isSr ? 'yq' : 'syw', isSr, isZZZ, isBH3);
       if (!data) return false;
       if (Array.isArray(data)) {
