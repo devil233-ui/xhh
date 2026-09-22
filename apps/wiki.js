@@ -9,7 +9,9 @@ const DOMParser = window.DOMParser;
 const _zzzAliasCache = {};
 const ZZZ_ALIAS_FILES = {
   43: 'zzz_js_names.yaml',   // 代理人
-  45: 'zzz_wq_names.yaml'    // 音擎
+  44: 'zzz_bb_names.yaml',   // 邦布
+  45: 'zzz_wq_names.yaml',   // 音擎
+  46: 'zzz_syw_names.yaml'   // 驱动盘
 };
 // nanoka 驱动盘推荐副词条（fairy_recommend.part_sub_list）只给属性 ID，
 // ID→名称映射只能从各角色 part4/5/6/part_sub 收集，覆盖不全时会漏（如安比的暴击伤害=21103），
@@ -26,6 +28,78 @@ const ZZZ_PROP_NAMES = {
   31703: '冰属性伤害加成', 31803: '电属性伤害加成',
   31903: '以太伤害加成', 32303: '风属性伤害加成'
 };
+
+// 输入词归一化：去空白/间隔号/连字符/书名号/括号后小写，供各别名渠道统一比对
+const normAlias = v => String(v || '').replace(/[\s·・\-—_「」『』《》【】\[\]（）()]/g, '').toLowerCase();
+
+// Atlas（plugins/Atlas）别名渠道兜底：本地 yaml、官方 wiki、ZZZ-Plugin/喵喵都查不到时最后试一层。
+// 数据形态：原神/ZZZ 的 othername yaml 是「正式名: [别名...]」；
+// 星铁的 othername.json 是「类目: {id: [正式名, 别名...]}」（数组首元素为正式名）。
+const ATLAS_ALIAS_FILES = {
+  gs: {
+    weapon: 'Genshin-Atlas/othername/weapon.yaml',
+    artifact: 'Genshin-Atlas/othername/artifact.yaml',
+  },
+  sr: {
+    char: { json: 'star-rail-atlas/othername.json', cat: 'role' },
+    weapon: { json: 'star-rail-atlas/othername.json', cat: 'lightcone' },
+    artifact: { json: 'star-rail-atlas/othername.json', cat: 'relic' },
+  },
+  zzz: {
+    43: 'zzz-atlas/othername/角色攻略.yaml',
+    44: 'zzz-atlas/othername/Bangboo.yaml',
+    45: 'zzz-atlas/othername/音擎.yaml',
+    46: 'zzz-atlas/othername/Drive Disc.yaml',
+  },
+};
+const _atlasAliasCache = new Map();
+function atlasAliasMap(game, kind) {
+  const cacheKey = `${game}:${kind}`;
+  if (_atlasAliasCache.has(cacheKey)) return _atlasAliasCache.get(cacheKey);
+  const map = {};
+  try {
+    const conf = (ATLAS_ALIAS_FILES[game] || {})[kind];
+    if (conf) {
+      const file = `./plugins/Atlas/${typeof conf === 'string' ? conf : conf.json}`;
+      if (fs.existsSync(file)) {
+        const data = yaml.get(file);
+        if (data && typeof data === 'object') {
+          if (typeof conf === 'string') {
+            // 「正式名: [别名...]」：别名含正式名本身，全部指回正式名
+            for (const [formal, val] of Object.entries(data)) {
+              const fk = normAlias(formal);
+              if (fk && !map[fk]) map[fk] = formal;
+              for (const v of Array.isArray(val) ? val : [val]) {
+                const k = normAlias(v);
+                if (k && !map[k]) map[k] = formal;
+              }
+            }
+          } else {
+            // 「类目: {id: [正式名, 别名...]}」：数组首元素为正式名
+            const cat = data[conf.cat] || {};
+            for (const list of Object.values(cat)) {
+              if (!Array.isArray(list) || !list.length) continue;
+              const formal = String(list[0] || '');
+              if (!formal) continue;
+              for (const v of list) {
+                const k = normAlias(v);
+                if (k && !map[k]) map[k] = formal;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (config().debug) logger.mark(`[xhh] Atlas 别名表加载失败 ${game}:${kind}: ${err?.message || err}`);
+  }
+  _atlasAliasCache.set(cacheKey, map);
+  return map;
+}
+// Atlas 别名反查：命中返回表内正式名（正式名本身也命中，等同原名，无害）
+function atlasResolve(raw = '', game = 'gs', kind = 'char') {
+  return raw ? atlasAliasMap(game, kind)[normAlias(raw)] || '' : '';
+}
 
 // 兼容 ZZZ-Plugin（ZZZure/ZZZ-Plugin）的代理人别名表：
 // 它的别名同样是「正式名: [别名列表]」，但存在 config/alias.yaml（用户自定义）与 defSet/alias.yaml（默认）两处，
@@ -91,7 +165,8 @@ function zzzAliasMap(channelId = 43) {
   const file = ZZZ_ALIAS_FILES[channelId] || ZZZ_ALIAS_FILES[43];
   const cacheKey = `__${file}`;
   if (_zzzAliasCache[cacheKey]) return _zzzAliasCache[cacheKey];
-  const names = yaml.get(`./plugins/xhh/system/default/${file}`) || {};
+  const localFile = `./plugins/xhh/system/default/${file}`;
+  const names = (fs.existsSync(localFile) ? yaml.get(localFile) : null) || {};
   const norm = v => String(v || '').replace(/[\s·・\-—_「」『』《》【】\[\]（）()]/g, '').toLowerCase();
   const map = {};
   for (const [formal, aliases] of Object.entries(names)) {
@@ -106,6 +181,24 @@ function zzzAliasMap(channelId = 43) {
   if (Number(channelId) === 43) {
     for (const [key, formal] of Object.entries(zzzPluginAliasMap())) {
       if (key && !map[key]) map[key] = formal;
+    }
+  }
+  // 各渠道再并入 Atlas 的别名词表，本地已有键不覆盖
+  const atlasZzzFile = ATLAS_ALIAS_FILES.zzz[Number(channelId)];
+  if (atlasZzzFile) {
+    const file = `./plugins/Atlas/${atlasZzzFile}`;
+    if (fs.existsSync(file)) {
+      try {
+        const data = yaml.get(file) || {};
+        for (const [formal, val] of Object.entries(data)) {
+          const fk = normAlias(formal);
+          if (fk && !map[fk]) map[fk] = formal;
+          for (const v of Array.isArray(val) ? val : [val]) {
+            const k = normAlias(v);
+            if (k && !map[k]) map[k] = formal;
+          }
+        }
+      } catch (_) { /* Atlas 表缺失/格式异常时忽略 */ }
     }
   }
   _zzzAliasCache[cacheKey] = map;
@@ -984,11 +1077,18 @@ export class Wiki extends plugin {
       ? './plugins/xhh/system/default/yiqi.yaml'
       : './plugins/xhh/system/default/syw.yaml';
     const _name = yaml.get(path);
+    let sywHit = false;
     for (let i in _name) {
       if (_name[i].includes(name)) {
         name = i;
+        sywHit = true;
         break;
       }
+    }
+    // 本地圣遗物/遗器表没命中时，用 Atlas 的武器/圣遗物别名词兜底（gs=圣遗物，sr=遗器，ZZZ/BH3 走各自表）
+    if (!sywHit && !isZZZ && !isBH3) {
+      const atlas = atlasResolve(name, isSr ? 'sr' : 'gs', 'artifact');
+      if (atlas) name = atlas;
     }
     if (Object.keys(_name).includes(name)) {
       let data = await mys.data(name, isZZZ ? 'syw' : isBH3 ? 'syw' : isSr ? 'yq' : 'syw', isSr, isZZZ, isBH3);
@@ -1044,6 +1144,7 @@ export class Wiki extends plugin {
     if (!wq && !isZZZ && !isBH3) {
       const miao = await miaoResolve(name, 'weapon', isSr ? 'sr' : 'gs');
       if (miao) wq = miao;
+      if (!wq) wq = atlasResolve(name, isSr ? 'sr' : 'gs', 'weapon');
     }
     if (wq) {
       const { id } = await mys.data(wq, isZZZ ? 'wq' : isBH3 ? 'wq' : isSr ? 'gz' : 'wq', isSr, isZZZ, isBH3);
@@ -1088,6 +1189,7 @@ export class Wiki extends plugin {
     if (!rname && !isZZZ && !isBH3) {
       const miao = await miaoResolve(name, 'char', isSr ? 'sr' : 'gs');
       if (miao) rname = miao;
+      if (!rname) rname = atlasResolve(name, isSr ? 'sr' : 'gs', 'char');
     }
     if (rname) {
       const { id } = await mys.data(rname, 'js', isSr, isZZZ, isBH3);
