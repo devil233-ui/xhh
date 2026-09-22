@@ -155,7 +155,17 @@ async function miaoResolve(raw = '', kind = 'char', game = 'gs') {
     const Model = kind === 'weapon' ? models.Weapon : models.Character;
     if (!Model?.get) return '';
     const hit = Model.get(raw, game === 'sr' ? 'sr' : 'gs');
-    return hit?.name || '';
+    if (hit?.name) return hit.name;
+    // 「XX专武」两步法（同喵喵 weaponWiki）：角色别名（如沾光男）不在武器表里，
+    // 先用 Character.get 把角色名归一为正式名，再以「正式名专武」查武器
+    if (kind === 'weapon' && /专武$/.test(raw) && models.Character?.get) {
+      const char = models.Character.get(raw.replace(/专武$/, ''), game === 'sr' ? 'sr' : 'gs');
+      if (char?.name) {
+        const weapon = models.Weapon.get(`${char.name}专武`, game === 'sr' ? 'sr' : 'gs');
+        if (weapon?.name) return weapon.name;
+      }
+    }
+    return '';
   } catch (_) {
     return '';
   }
@@ -427,6 +437,7 @@ export class Wiki extends plugin {
         if (await this[method](...args)) return true;
       }
       logger.mark(`[xhh][图鉴] ${name} 原神侧未命中（新条目请确认米游社图鉴已收录）`);
+      return false;
     } else {
       for (const { method, args } of checkTypes) {
         if (await this[method](...args)) return true;
@@ -438,8 +449,11 @@ export class Wiki extends plugin {
       }
       if (await this.bangboo(e, name)) return true;
     }
-    //最后查总列表
-    if (/角色|武器|大剑|双手剑|单手剑|法器|长枪|弓箭|弓|光锥|圣遗物|遗器|音擎|驱动盘|邦布|圣痕|人偶|协同者/.test(name)) return this.list(e, name, isSr, isZZZ, isBH3);
+    // 最后查总列表。带游戏前缀（#/ * /%）的消息不做列表兜底：
+    // 「#角色详情」这类通用词会把全角色列表图顶出来，直接静默放行。
+    if (/角色|武器|大剑|双手剑|单手剑|法器|长枪|弓箭|弓|光锥|圣遗物|遗器|音擎|驱动盘|邦布|圣痕|人偶|协同者/.test(name)) {
+      return this.list(e, name, isSr, isZZZ, isBH3);
+    }
     return false;
   }
 
