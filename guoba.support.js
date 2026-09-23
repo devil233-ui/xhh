@@ -102,7 +102,7 @@ export const supportGuoba = () => ({
         component: 'Switch',
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '塔罗牌',
       },
       {
@@ -117,7 +117,7 @@ export const supportGuoba = () => ({
         componentProps: { min: 1, max: 99, step: 1 },
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '游戏攻略',
       },
       {
@@ -154,7 +154,7 @@ export const supportGuoba = () => ({
         },
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '签到设置',
       },
       {
@@ -194,7 +194,33 @@ export const supportGuoba = () => ({
         component: 'InputTextArea',
       },
       {
-        component: 'Divider',
+        field: 'manual_gt_enable',
+        label: '签到手动验证码',
+        helpMessage: '游戏签到遇验证码时生成手动验证网页，完成后自动重试',
+        component: 'Switch',
+      },
+      {
+        field: 'manual_gt_public_url',
+        label: '手动验证公网地址',
+        helpMessage: '例如 http://你的域名:3000；群友需要能访问，留空则用127.0.0.1仅本机可用',
+        component: 'InputTextArea',
+      },
+      {
+        field: 'manual_gt_port',
+        label: '手动验证端口',
+        helpMessage: '默认3000，修改后需重启Bot',
+        component: 'InputNumber',
+        componentProps: { min: 1, max: 65535, step: 1 },
+      },
+      {
+        field: 'manual_gt_timeout',
+        label: '手动验证超时秒',
+        helpMessage: '默认120秒',
+        component: 'InputNumber',
+        componentProps: { min: 30, max: 600, step: 10 },
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
         label: '米游社',
       },
       {
@@ -252,7 +278,7 @@ export const supportGuoba = () => ({
         componentProps: { min: 0, max: 3600, step: 10 },
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: 'B站设置',
       },
       {
@@ -313,7 +339,7 @@ export const supportGuoba = () => ({
         component: 'Switch',
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '卡池/图鉴外观',
       },
       {
@@ -341,7 +367,7 @@ export const supportGuoba = () => ({
         },
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '崩坏3扩展',
       },
       {
@@ -394,7 +420,7 @@ export const supportGuoba = () => ({
         component: 'InputTextArea',
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '活动到期提醒',
       },
       {
@@ -464,7 +490,7 @@ export const supportGuoba = () => ({
         component: 'InputTextArea',
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
         label: '崩坏3攻略源',
       },
       {
@@ -492,7 +518,94 @@ export const supportGuoba = () => ({
         component: 'InputTextArea',
       },
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
+        label: '绝区零攻略源',
+      },
+      {
+        field: 'zzz_guide_defense_sources',
+        label: '防卫战攻略源',
+        helpMessage: '每行：关键词|米游社UID|图片序号|作者名；如 式舆防卫战|4068738|0,1,2|洗礼酱',
+        component: 'InputTextArea',
+      },
+      {
+        field: 'zzz_guide_deadly_sources',
+        label: '危局强袭战攻略源',
+        helpMessage: '每行：关键词|米游社UID|图片序号|作者名；危局会优先识别当前Boss',
+        component: 'InputTextArea',
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
+        label: '自定义攻略源',
+      },
+      {
+        field: 'custom_guide_enable',
+        label: '自定义攻略源开关',
+        helpMessage: '开启后可用 #角色名攻略 触发（也支持 xhh/小花火 前缀）；角色名即关键词，自动用别名表归一成正式名，无需手填角色列表',
+        component: 'Switch',
+      },
+      {
+        field: 'custom_guide_forward',
+        label: '合并转发模式',
+        helpMessage: '开启=合并转发发送（带标题）；关闭=逐条拼接消息发送（不带标题文字，直接发 作者/标题/发布时间/原帖+图片）',
+        component: 'Select',
+        componentProps: {
+          options: [
+            { label: '开启合并转发', value: 'on' },
+            { label: '关闭合并转发(拼接消息)', value: 'off' },
+          ],
+        },
+      },
+      {
+        field: 'custom_guide_uid',
+        label: '全局兜底源(作者UID)',
+        helpMessage: '仅当对应游戏没填下面的默认源、或角色不在别名表时才用它；代码内置默认 74019947',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_gs_uid',
+        label: '原神默认源(作者UID)',
+        helpMessage: '原神角色的默认攻略作者；发 #原神角色名攻略 时自动以角色正式名搜索该UID',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_gs_index',
+        label: '原神默认图片序号',
+        helpMessage: '留空取该帖全部图片；填序号取指定张，如 0 或 0,2,3（从0开始，英文逗号分隔）',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_sr_uid',
+        label: '星铁默认源(作者UID)',
+        helpMessage: '星铁角色的默认攻略作者；发 #星铁角色名攻略 时自动以角色正式名搜索该UID',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_sr_index',
+        label: '星铁默认图片序号',
+        helpMessage: '留空取该帖全部图片；如 0 或 0,2',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_zzz_uid',
+        label: '绝区零默认源(作者UID)',
+        helpMessage: '绝区零角色的默认攻略作者；发 #绝区零角色名攻略 时自动以角色正式名搜索该UID',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_zzz_index',
+        label: '绝区零默认图片序号',
+        helpMessage: '留空取该帖全部图片；如 0 或 0,2',
+        component: 'Input',
+      },
+      {
+        field: 'custom_guide_priority',
+        label: '自定义攻略源优先级',
+        helpMessage: '默认 -9999999999（极高优先级，确保优先于其它攻略插件抢到指令）；数字越小越优先，修改后需重启',
+        component: 'InputNumber',
+        componentProps: { min: -9999999999, max: 9999999999, step: 1 },
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
         label: '原神/星铁深渊速报',
       },
       {
@@ -544,7 +657,31 @@ export const supportGuoba = () => ({
         component: 'Switch',
       },
       {
-        component: 'Divider',
+        field: 'abyss_report_zzz_shiyu_periods',
+        label: '式舆防卫战返回期数',
+        helpMessage: '默认"末期"只显示当前期（每版本最后一期）；选"全部期"会返回该版本全部期（如 3.1 的 3 期），多期时自动逐条发送',
+        component: 'Select',
+        componentProps: {
+          options: [
+            { label: '末期（默认）', value: 'last' },
+            { label: '全部期', value: 'all' },
+          ],
+        },
+      },
+      {
+        field: 'abyss_report_zzz_deadly_periods',
+        label: '危局强袭战返回期数',
+        helpMessage: '默认"末期"只显示当前期（每版本最后一期）；选"全部期"会返回该版本全部期（如 3.1 的 3 期），多期时自动逐条发送',
+        component: 'Select',
+        componentProps: {
+          options: [
+            { label: '末期（默认）', value: 'last' },
+            { label: '全部期', value: 'all' },
+          ],
+        },
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
         label: '插件优先级（修改后需重启Bot）',
       },
       {
@@ -632,13 +769,6 @@ export const supportGuoba = () => ({
         componentProps: { min: -9999999999, max: 9999999999, step: 1 },
       },
       {
-        field: 'bh3_calendar_priority',
-        label: '崩三日历(bh3_calendar)',
-        helpMessage: '默认 -999999，修改后需重启',
-        component: 'InputNumber',
-        componentProps: { min: -9999999999, max: 9999999999, step: 1 },
-      },
-      {
         field: 'bh3_gacha_priority',
         label: '崩三抽卡(bh3_gacha)',
         helpMessage: '默认 100',
@@ -665,6 +795,7 @@ export const supportGuoba = () => ({
       priorityInput('gs_logs_priority', '原神历史卡池(gs_logs)', -99),
       priorityInput('sr_logs_priority', '星铁历史卡池(sr_logs)', -88),
       priorityInput('sr_strategy_priority', '星铁攻略图(sr_strategy)', -99),
+      priorityInput('mhy_estimate_priority', '预估/攻略搜索(mhy_estimate)', -9999999999),
       priorityInput('video_priority', '米哈游最新视频(video)', 1),
       priorityInput('voice_priority', '角色语音(voice)', 15),
       priorityInput('update_priority', '插件更新(update)', 10),
@@ -676,8 +807,58 @@ export const supportGuoba = () => ({
       priorityInput('huobi_priority', '货币战争(huobi)', 123),
       priorityInput('role_combat_priority', '剧诗可用角色(role_combat)', 100),
       priorityInput('zzz_md_priority', '绝区零母带(zzz_md)', 100),
+      priorityInput('currency_balance_priority', '货币统计(currency_balance)', 100),
       {
-        component: 'Divider',
+        component: 'SOFT_GROUP_BEGIN',
+        label: 'Meme表情包',
+      },
+      priorityInput('meme_priority', 'Meme表情(meme)', 50),
+      {
+        field: 'meme',
+        label: 'Meme表情包总开关',
+        helpMessage: '开启后可制作/查询 meme 表情包',
+        component: 'Switch',
+      },
+      {
+        field: 'meme_baseUrl',
+        label: 'Meme服务地址',
+        helpMessage: 'yunzai-meme 服务地址，一般无需修改',
+        component: 'Input',
+      },
+      {
+        field: 'meme_reply',
+        label: '制作时引用回复',
+        helpMessage: '发送制作结果时是否引用原消息',
+        component: 'Switch',
+      },
+      {
+        field: 'meme_forceSharp',
+        label: '必须带#前缀',
+        helpMessage: '开启后不带 # 前缀不触发 meme 制作',
+        component: 'Switch',
+      },
+      {
+        field: 'meme_CD',
+        label: '制作冷却CD',
+        helpMessage: '单位：秒，0 表示无冷却',
+        component: 'InputNumber',
+        componentProps: { min: 0, max: 3600, step: 1 },
+      },
+      {
+        field: 'meme_maxFileSize',
+        label: '图片大小限制',
+        helpMessage: '制作时单张图片最大 MB 数',
+        component: 'InputNumber',
+        componentProps: { min: 1, max: 100, step: 1 },
+      },
+      {
+        field: 'meme_masterProtectDo',
+        label: '主人保护',
+        helpMessage: '制作对象是主人时改用发送者本人头像',
+        component: 'Switch',
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
         label: '其他',
       },
       {
@@ -727,6 +908,10 @@ export const supportGuoba = () => ({
         sbai: !!sign.sbai,
         sign_group: (sign.sign_group || []).join(','),
         bbs_sign_group: (sign.bbs_sign_group || []).join(','),
+        manual_gt_enable: cfg.manual_gt_enable !== false,
+        manual_gt_public_url: cfg.manual_gt_public_url || '',
+        manual_gt_port: cfg.manual_gt_port ?? 3000,
+        manual_gt_timeout: cfg.manual_gt_timeout ?? 120,
         groups: (Array.isArray(cfg.groups) ? cfg.groups : []).join(','),
         forwardMsg: other.forwardMsg !== false,
         bh3: !!other.bh3,
@@ -753,7 +938,7 @@ export const supportGuoba = () => ({
         gacha_up_icon_source: cfg.gacha_up_icon_source || cfg.gacha_art_source || 'custom',
         tl_priority: cfg.tl_priority ?? -99,
         sign_priority: cfg.sign_priority ?? -26,
-        user_priority: cfg.user_priority ?? -666,
+        user_priority: cfg.user_priority ?? -9999999999,
         wiki_priority: other.wiki ?? 100,
         bh3_remind_priority: cfg.bh3_remind_priority ?? -1000001,
         activity_remind_priority: cfg.activity_remind_priority ?? -1000002,
@@ -763,7 +948,6 @@ export const supportGuoba = () => ({
         bh3_godwar_priority: cfg.bh3_godwar_priority ?? 100,
         bh3_profile_priority: cfg.bh3_profile_priority ?? 100,
         bh3_all_note_priority: cfg.bh3_all_note_priority ?? 100,
-        bh3_calendar_priority: cfg.bh3_calendar_priority ?? -999999,
         bh3_gacha_priority: cfg.bh3_gacha_priority ?? 100,
         bh3_ledger_priority: cfg.bh3_ledger_priority ?? 100,
         bilibili_priority: cfg.bilibili_priority ?? -120,
@@ -772,6 +956,7 @@ export const supportGuoba = () => ({
         gs_logs_priority: cfg.gs_logs_priority ?? -99,
         sr_logs_priority: cfg.sr_logs_priority ?? -88,
         sr_strategy_priority: cfg.sr_strategy_priority ?? -99,
+        mhy_estimate_priority: Number.isFinite(Number(cfg.mhy_estimate_priority)) ? Number(cfg.mhy_estimate_priority) : -9999999999,
         video_priority: cfg.video_priority ?? 1,
         voice_priority: cfg.voice_priority ?? 15,
         update_priority: cfg.update_priority ?? 10,
@@ -783,6 +968,7 @@ export const supportGuoba = () => ({
         huobi_priority: cfg.huobi_priority ?? 123,
         role_combat_priority: cfg.role_combat_priority ?? 100,
         zzz_md_priority: cfg.zzz_md_priority ?? 100,
+        currency_balance_priority: cfg.currency_balance_priority ?? 100,
         bh3_remind_enable: !!bh3Remind.enable,
         bh3_all_note_enable: !!cfg.bh3_all_note_enable,
         bh3_all_note_groups: (cfg.bh3_all_note_groups || '').split(/[,，\s]+/).map(v => v.trim()).filter(Boolean).join(','),
@@ -804,6 +990,18 @@ export const supportGuoba = () => ({
         bh3_guide_abyss_sources: cfg.bh3_guide_abyss_sources || defaultBh3GuideSources.abyss,
         bh3_guide_battlefield_sources: cfg.bh3_guide_battlefield_sources || defaultBh3GuideSources.battlefield,
         bh3_guide_godwar_sources: cfg.bh3_guide_godwar_sources || defaultBh3GuideSources.godwar,
+        zzz_guide_defense_sources: cfg.zzz_guide_defense_sources || defaultBh3GuideSources.zzzDefense,
+        zzz_guide_deadly_sources: cfg.zzz_guide_deadly_sources || defaultBh3GuideSources.zzzDeadly,
+        custom_guide_enable: cfg.custom_guide_enable !== false,
+        custom_guide_forward: cfg.custom_guide_forward || 'on',
+        custom_guide_uid: cfg.custom_guide_uid || '74019947',
+        custom_guide_gs_uid: cfg.custom_guide_gs_uid || '',
+        custom_guide_gs_index: cfg.custom_guide_gs_index || '',
+        custom_guide_sr_uid: cfg.custom_guide_sr_uid || '',
+        custom_guide_sr_index: cfg.custom_guide_sr_index || '',
+        custom_guide_zzz_uid: cfg.custom_guide_zzz_uid || '',
+        custom_guide_zzz_index: cfg.custom_guide_zzz_index || '',
+        custom_guide_priority: cfg.custom_guide_priority ?? -9999999999,
         abyss_report_repos: cfg.abyss_report_repos || 'https://cnb.cool/JIUXJIU/Abyss/-/git/raw/main\nhttps://cnb.cool/JIUXJIU/AbyssBeta/-/git/raw/main',
         abyss_report_gs_version: cfg.abyss_report_gs_version || '',
         abyss_report_sr_version: cfg.abyss_report_sr_version || '',
@@ -812,7 +1010,17 @@ export const supportGuoba = () => ({
         abyss_report_sr_doom_levels: cfg.abyss_report_sr_doom_levels || '3,4',
         abyss_report_zzz_shiyu_stages: cfg.abyss_report_zzz_shiyu_stages || '4,5',
         abyss_report_sr_invasion: cfg.abyss_report_sr_invasion !== false,
+        abyss_report_zzz_shiyu_periods: cfg.abyss_report_zzz_shiyu_periods || 'last',
+        abyss_report_zzz_deadly_periods: cfg.abyss_report_zzz_deadly_periods || 'last',
         abyss_report_priority: cfg.abyss_report_priority ?? 100,
+        meme: cfg.meme !== false,
+        meme_baseUrl: cfg.meme_baseUrl || 'http://113.31.103.19:50835',
+        meme_reply: cfg.meme_reply !== false,
+        meme_forceSharp: cfg.meme_forceSharp !== false,
+        meme_CD: cfg.meme_CD ?? 0,
+        meme_maxFileSize: cfg.meme_maxFileSize ?? 10,
+        meme_masterProtectDo: cfg.meme_masterProtectDo !== false,
+        meme_priority: cfg.meme_priority ?? 50,
       }
     },
     setConfigData(data, { Result }) {
@@ -837,11 +1045,16 @@ export const supportGuoba = () => ({
         debug: data.debug,
         bh3_remind_enable: data.bh3_remind_enable,
         bh3_all_note_enable: data.bh3_all_note_enable,
+        manual_gt_enable: data.manual_gt_enable,
         forwardMsg: data.forwardMsg,
         bh3: data.bh3,
         by: data.by,
         xbgd: data.xbgd,
         cover: data.cover,
+        meme: data.meme,
+        meme_reply: data.meme_reply,
+        meme_forceSharp: data.meme_forceSharp,
+        meme_masterProtectDo: data.meme_masterProtectDo,
         abyss_report_sr_invasion: data.abyss_report_sr_invasion,
       }
       for (const [k, v] of Object.entries(boolMap)) {
@@ -858,6 +1071,10 @@ export const supportGuoba = () => ({
         qn: data.qn,
         dow_size: data.dow_size,
         b_img_num: data.b_img_num,
+        manual_gt_port: data.manual_gt_port,
+        manual_gt_timeout: data.manual_gt_timeout,
+        meme_CD: data.meme_CD,
+        meme_maxFileSize: data.meme_maxFileSize,
       }
       for (const [k, v] of Object.entries(numMap)) {
         if (v != null) yaml.set(_path + 'config.yaml', k, Number(v))
@@ -866,6 +1083,9 @@ export const supportGuoba = () => ({
       if (data.gacha_art_source) yaml.set(_path + 'config.yaml', 'gacha_art_source', data.gacha_art_source === 'official' ? 'official' : 'custom')
       if (data.gacha_header_art_source) yaml.set(_path + 'config.yaml', 'gacha_header_art_source', data.gacha_header_art_source === 'official' ? 'official' : 'custom')
       if (data.gacha_up_icon_source) yaml.set(_path + 'config.yaml', 'gacha_up_icon_source', data.gacha_up_icon_source === 'official' ? 'official' : 'custom')
+      yaml.set(_path + 'config.yaml', 'manual_gt_public_url', String(data.manual_gt_public_url || '').trim())
+      const memeBaseUrl = String(data.meme_baseUrl || '').trim()
+      if (memeBaseUrl) yaml.set(_path + 'config.yaml', 'meme_baseUrl', memeBaseUrl)
 
       yaml.set(_path + 'sign.yaml', 'zd_sign', Number(data.zd_sign) ?? 0)
       yaml.set(_path + 'sign.yaml', 'sbai', !!data.sbai)
@@ -908,6 +1128,17 @@ export const supportGuoba = () => ({
       yaml.set(_path + 'config.yaml', 'mys_global_guide_search', data.mys_global_guide_search !== false)
       yaml.set(_path + 'config.yaml', 'bh3_guide_battlefield_sources', String(data.bh3_guide_battlefield_sources || '').trim())
       yaml.set(_path + 'config.yaml', 'bh3_guide_godwar_sources', String(data.bh3_guide_godwar_sources || '').trim())
+      yaml.set(_path + 'config.yaml', 'zzz_guide_defense_sources', String(data.zzz_guide_defense_sources || '').trim())
+      yaml.set(_path + 'config.yaml', 'zzz_guide_deadly_sources', String(data.zzz_guide_deadly_sources || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_enable', !!data.custom_guide_enable)
+      yaml.set(_path + 'config.yaml', 'custom_guide_forward', data.custom_guide_forward === 'off' ? 'off' : 'on')
+      yaml.set(_path + 'config.yaml', 'custom_guide_uid', String(data.custom_guide_uid || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_gs_uid', String(data.custom_guide_gs_uid || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_gs_index', String(data.custom_guide_gs_index || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_sr_uid', String(data.custom_guide_sr_uid || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_sr_index', String(data.custom_guide_sr_index || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_zzz_uid', String(data.custom_guide_zzz_uid || '').trim())
+      yaml.set(_path + 'config.yaml', 'custom_guide_zzz_index', String(data.custom_guide_zzz_index || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_repos', String(data.abyss_report_repos || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_gs_version', String(data.abyss_report_gs_version || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_sr_version', String(data.abyss_report_sr_version || '').trim())
@@ -915,17 +1146,21 @@ export const supportGuoba = () => ({
       yaml.set(_path + 'config.yaml', 'abyss_report_sr_maze_levels', String(data.abyss_report_sr_maze_levels || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_sr_doom_levels', String(data.abyss_report_sr_doom_levels || '').trim())
       yaml.set(_path + 'config.yaml', 'abyss_report_zzz_shiyu_stages', String(data.abyss_report_zzz_shiyu_stages || '').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_zzz_shiyu_periods', String(data.abyss_report_zzz_shiyu_periods || 'last').trim())
+      yaml.set(_path + 'config.yaml', 'abyss_report_zzz_deadly_periods', String(data.abyss_report_zzz_deadly_periods || 'last').trim())
 
       const priorityFields = [
         'tl_priority', 'sign_priority', 'user_priority', 'wiki_priority',
         'bh3_remind_priority', 'activity_remind_priority', 'bh3_note_priority', 'bh3_abyss_priority',
         'bh3_battlefield_priority', 'bh3_godwar_priority', 'bh3_profile_priority',
-        'bh3_all_note_priority', 'bh3_calendar_priority', 'bh3_gacha_priority', 'bh3_ledger_priority', 'abyss_report_priority',
+        'bh3_all_note_priority', 'bh3_gacha_priority', 'bh3_ledger_priority', 'abyss_report_priority',
         'bilibili_priority', 'bilibili_push_priority', 'gacha_pool_priority',
-        'gs_logs_priority', 'sr_logs_priority', 'sr_strategy_priority',
+        'gs_logs_priority', 'sr_logs_priority', 'sr_strategy_priority', 'mhy_estimate_priority',
         'video_priority', 'voice_priority', 'update_priority', 'config_priority', 'tlp_priority',
         'help_priority', 'picture_priority', 'npc_wt_priority', 'huobi_priority',
-        'role_combat_priority', 'zzz_md_priority',
+        'role_combat_priority', 'zzz_md_priority', 'currency_balance_priority',
+        'custom_guide_priority',
+        'meme_priority',
       ]
       for (const f of priorityFields) {
         if (data[f] != null) yaml.set(_path + 'config.yaml', f, Number(data[f]))

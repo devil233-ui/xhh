@@ -66,7 +66,7 @@ list_num: 12
 #请量力而行，自己服务器网速不行，就不要开高了
 qn: 3
 
-#bilibili视频小于多少MB时自动下载：填数字（0代表永远不自动下载；超过99MB下载后作为群文件发送）
+#bilibili视频小于多少MB时自动下载：填数字（0代表永远不自动下载；超过99MB会作为群文件发送）
 #注意：视频大小会随你的清晰度设置而变化
 dow_size: 30
 
@@ -95,38 +95,91 @@ emoji: false
 #如果你bot有这种问题，就改成：true
 hbxx: false
 
-#http://ttocr.com/
+#验证码识别接口：https://mhy.989894366.xyz/mihoyo_api/status
+#现在免费，随便填个 key；留空时插件自动使用 free
 Verification_API_KEY: ''
+# 米游社签到手动验证码服务
+manual_gt_enable: true
+manual_gt_host: 0.0.0.0
+manual_gt_port: 3000
+manual_gt_public_url: ''
+manual_gt_path: /xhh-gt
+manual_gt_timeout: 120
 
-#卡池/图鉴外观来源：custom使用本地资源，official使用米游社官方资源
+#卡池立绘来源：兼容旧配置；新配置见下面两个字段
 gacha_art_source: custom
+#右上角立绘来源：custom 随机/本地立绘，official 官方角色立绘
 gacha_header_art_source: custom
+#UP小图来源：custom 本地/面板图，official 官方头像/图标
 gacha_up_icon_source: official
 
-#崩坏3当前深渊攻略源（关键词|米游社UID|作者名）
+#崩坏3攻略源配置（锅巴可视化修改）
+#格式：关键词|米游社UID|图片序号(英文逗号分隔)|作者名
+#攻略源搜不到时自动回退米游社全站搜索（同 genshin #米游社搜索 的搜索方式）
+mys_global_guide_search: true
 bh3_guide_abyss_sources: |-
-  红莲|30269990|朔守
-  寂灭|30269990|朔守
-  红莲|11956740|残月
-  寂灭|11956740|残月
-  红莲|15491760|墨之羽
+  官服红莲|7042629|0,1,2,3,4,5|雷电女王的康纳酱
+bh3_guide_battlefield_sources: |-
+  记忆战场|11956740|0,1,2,3,4,5,6,7,8,9|残月
+  战场作业|15491760|0,1,2,3,4,5,6,7,8,9|墨之羽
+  终极区战场|30269990|0,1,2,3,4,5,6,7,8,9|朔守
+bh3_guide_godwar_sources: |-
+  往世乐土|11956740|0,1,2,3,4,5,6,7,8,9|残月
+  乐土攻略|15491760|0,1,2,3,4,5,6,7,8,9|墨之羽
+  乐土因子|30269990|0,1,2,3,4,5,6,7,8,9|朔守
+zzz_guide_defense_sources: |-
+  式舆防卫战|4068738|0,1,2,3,4,5,6,7,8,9|洗礼酱
+  防卫战攻略|285802042|0,1,2,3,4,5|HoYo青枫
+zzz_guide_deadly_sources: |-
+  危局强袭战|4068738|0,1,2,3,4,5,6,7,8,9|洗礼酱
+  危局攻略|285802042|0,1,2,3,4,5|HoYo青枫
 
-#原神/星铁深渊速报图片仓库（每行一个，留空使用默认仓库）
+#自定义攻略源（锅巴可视化修改）
+#===== 自定义攻略源（极简模式）=====
+#发指令：#角色名攻略 / #角色名一图流 / #角色名配对 / #角色名配队（前缀 xhh/ 或 小花火 也可，可省略）
+#只需填各游戏作者UID，角色名即关键词（自动用别名表归一成正式名，无需列角色）
+#合并转发模式：on=合并转发(带标题)，off=逐条拼接(不带标题)
+custom_guide_enable: true
+custom_guide_forward: on
+#默认源(兜底作者UID)：某游戏未单独填、或角色不在别名表时使用；内置默认 74019947
+custom_guide_uid: 74019947
+#各游戏作者UID（留空则用默认源）；index 留空取帖全部图，如 0 或 0,2
+custom_guide_gs_uid: ''
+custom_guide_gs_index: ''
+custom_guide_sr_uid: ''
+custom_guide_sr_index: ''
+custom_guide_zzz_uid: ''
+custom_guide_zzz_index: ''
+
+#原神/星铁深渊速报图片仓库（每行一个，留空用默认Abyss仓库）
 abyss_report_repos: |-
   https://cnb.cool/JIUXJIU/Abyss/-/git/raw/main
   https://cnb.cool/JIUXJIU/AbyssBeta/-/git/raw/main
+#原神/星铁深渊速报默认版本，留空自动读取Nanoka live版本
 abyss_report_gs_version: ''
 abyss_report_sr_version: ''
 
-#米游社自动过码服务地址（撞验证码时自动过码并重试，用户无感）：
-#服务用 /root/geetest-solver（pm2 名 geetest-solver），填 http://127.0.0.1:8766/solve；
-#没部署该服务时填 ""，撞码会退回提示用户稍后再试。
-auto_verify_addr: http://127.0.0.1:8766/solve
+#Meme表情包设置
+#meme表情包总开关：true开，false关
+meme: true
+#meme表情制作服务地址（yunzai-meme，无需改动）
+meme_baseUrl: http://113.31.103.19:50835
+#制作表情时是否引用回复：true是，false否
+meme_reply: true
+#是否必须带#前缀触发：true是，false否
+meme_forceSharp: true
+#制作表情冷却时间：填数字（单位：秒，0为无冷却）
+meme_CD: 0
+#制作时图片大小限制：填数字（单位：MB）
+meme_maxFileSize: 10
+#主人保护：制作主人时使用发送者本人头像：true开，false关
+meme_masterProtectDo: true
 
-#新增功能插件优先级（数字越小越优先，修改后需要重启）
+#插件优先级（修改后需重启）
 tl_priority: -99
-user_priority: -666
-wiki_priority: -99
+sign_priority: -26
+user_priority: -9999999999
+wiki_priority: 100
 bh3_remind_priority: -1000001
 activity_remind_priority: -1000002
 bh3_note_priority: 100
@@ -135,13 +188,27 @@ bh3_battlefield_priority: 100
 bh3_godwar_priority: 100
 bh3_profile_priority: 100
 bh3_all_note_priority: 100
-bh3_calendar_priority: -999999
 bh3_gacha_priority: 100
 bh3_ledger_priority: 100
 abyss_report_priority: 100
 bilibili_priority: -120
 bilibili_push_priority: -119
 gacha_pool_priority: -1000000000
-role_combat_priority: 100
-help_priority: 100
+gs_logs_priority: -99
+sr_logs_priority: -88
+sr_strategy_priority: -99
+mhy_estimate_priority: -9999999999
 video_priority: 1
+voice_priority: 15
+update_priority: 10
+config_priority: 15
+tlp_priority: 15
+help_priority: 100
+picture_priority: 1234
+npc_wt_priority: 1234
+huobi_priority: 123
+role_combat_priority: 100
+zzz_md_priority: 100
+currency_balance_priority: 100
+meme_priority: 50
+custom_guide_priority: -9999999999
