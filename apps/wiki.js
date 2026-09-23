@@ -17,9 +17,9 @@ const ZZZ_ALIAS_FILES = {
 // ID→名称映射只能从各角色 part4/5/6/part_sub 收集，覆盖不全时会漏（如安比的暴击伤害=21103），
 // 这里内置完整对照表兜底（11x/12x/13x 结尾 02 为百分比、03 为固定值）。
 const ZZZ_PROP_NAMES = {
-  11102: '生命值%', 11103: '生命值',
-  12102: '攻击力%', 12103: '攻击力',
-  13102: '防御力%', 13103: '防御力',
+  11102: '生命值百分比', 11103: '生命值',
+  12102: '攻击力百分比', 12103: '攻击力',
+  13102: '防御力百分比', 13103: '防御力',
   12202: '冲击力',
   20103: '暴击率', 21103: '暴击伤害',
   23103: '穿透率', 30502: '能量自动回复',
@@ -408,6 +408,8 @@ export class Wiki extends plugin {
     const isBH3 = cmd.includes('崩坏3') || cmd.includes('崩坏三') || cmd.includes('崩三') || cmd.includes('BH3');
     let name = cmd
       .replace(/^[#%*]*/, '')
+      // 插件前缀（xhh菲欧妮图鉴 / 小花火菲欧妮图鉴）不参与查询名
+      .replace(/^(?:xhh|小花火)[#%*]*/i, '')
       .replace(/星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3/gi, '')
       .trim();
     name = name.startsWith('图鉴') ? name.replace(/^图鉴/, '') : name.replace(/图鉴$/, '');
@@ -431,6 +433,10 @@ export class Wiki extends plugin {
       }
       if (hasZzzExclusiveWords && await this.zzzExclusiveEquip(e, name)) return true;
       if (hasBh3ExclusiveWords && await this.bh3ExclusiveEquip(e, name)) return true;
+    }
+    // 纯列表关键词直接出列表，省掉按角色逐个试探
+    if (/^(角色|武器|光锥|遗器|音擎|驱动盘|邦布|圣遗物|圣痕|人偶|协同者|大剑|双手剑|单手剑|长枪|长柄武器|弓|弓箭|法器)$/.test(name)) {
+      return this.list(e, name, isSr, isZZZ, isBH3);
     }
     // 统一处理角色/武器/遗器查询
     const checkTypes = [
@@ -474,6 +480,12 @@ export class Wiki extends plugin {
     // 「#角色详情」这类通用词会把全角色列表图顶出来，直接静默放行。
     if (/角色|武器|大剑|双手剑|单手剑|法器|长枪|弓箭|弓|光锥|圣遗物|遗器|音擎|驱动盘|邦布|圣痕|人偶|协同者/.test(name)) {
       return this.list(e, name, isSr, isZZZ, isBH3);
+    }
+    if (config().debug) logger.mark(`[xhh] 图鉴未命中: name=「${name}」 isSr=${isSr} isZZZ=${isZZZ} isBH3=${isBH3}`);
+    // # 前缀已在上面静默放行。这里只提示没有游戏前缀、也不是列表词的未命中。
+    if (!/^[＃#*%]/.test(cmd) && name.length >= 2) {
+      await e.reply(`没有找到「${name}」的图鉴数据。\n可尝试指定游戏：绝区零${name}图鉴 / *${name}图鉴 / #${name}图鉴，或检查名称是否正确。`);
+      return true;
     }
     return false;
   }
@@ -655,9 +667,15 @@ export class Wiki extends plugin {
       }
     }
     const ratingOrder = { 五星: 1, 'S级': 1, 四星: 2, 'A级': 2, 三星: 3, 'B级': 3, 二星: 4, 一星: 5 };
-    //重新排序（5星排在顶部）
+    // 重新排序：星级高的在前；绝区零同星级内 content_id 越大（上线越晚）越靠前
     data = data.sort((a, b) => {
-      return ratingOrder[a.ji] - ratingOrder[b.ji];
+      const diff = (ratingOrder[a.ji] ?? 99) - (ratingOrder[b.ji] ?? 99);
+      if (diff) return diff;
+      if (isZZZ) {
+        const ai = Number(a.id), bi = Number(b.id);
+        if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) return bi - ai;
+      }
+      return 0;
     });
     //根据name去重（主角只需要显示一个）
     data = data.filter(
@@ -666,8 +684,10 @@ export class Wiki extends plugin {
 
     if (data.length > 50)
       reply_recallMsg(e, `正在获取${_name}列表中,请等待...`, 30);
+    const rankClassMap = { 五星: 'r5', 'S级': 'r5', 四星: 'r4', 'A级': 'r4', 三星: 'r3', 'B级': 'r3', 二星: 'r2', 一星: 'r1' };
     data = data.map(item => ({
       ...item,
+      rankClass: rankClassMap[item.ji] || 'r0',
       badges: [item.ji, item.yuanshu, item.wuqi]
         .filter(v => v && v !== '未知' && v !== 'false')
         .map(v => ({ text: v, icon: this.getWikiIcon(v) }))
@@ -1264,12 +1284,15 @@ export class Wiki extends plugin {
 
   //角色
   async role(e, name, isSr = false, isZZZ = false, isBH3 = false) {
+    const dbg = (...args) => { if (config().debug) logger.mark('[xhh][图鉴解析]', ...args); };
     if (isZZZ) {
       name = await this.resolveZzzWikiName(name, 43);
+      dbg('ZZZ 角色解析:', name);
       const ret = await mys.data(name, 'js', false, true);
-      if (!ret?.id) return false;
-      const data = await mys.detail(ret.id, false, true);
-      if (!data) return false;
+      if (!ret?.id) { dbg('ZZZ wiki 无此角色:', name); return false; }
+      dbg('ZZZ 命中条目:', `id=${ret.id}`, ret.official ? '来源=官方Wiki兜底(详情走官方)' : '来源=nanoka');
+      const data = await mys.detail(ret.id, false, true, false, !!ret.official);
+      if (!data) { dbg('ZZZ 角色详情获取失败:', name, 'id=' + ret.id); return false; }
       this.zzz_role_pictures(e, data);
       return true;
     }
@@ -1300,10 +1323,12 @@ export class Wiki extends plugin {
         if (ret?.id) rname = name;
       }
     }
+    if (!rname) dbg(`${isSr ? '星铁' : isBH3 ? '崩三' : '原神'} 本地别名/喵喵别名均未命中:`, name);
     if (rname) {
       const { id } = await mys.data(rname, 'js', isSr, isZZZ, isBH3);
-      if (!id) return false;
+      if (!id) { dbg('wiki 无此角色条目:', rname); return false; }
       let data = await mys.detail(id, isSr, isZZZ, isBH3);
+      if (!data) { dbg('角色详情获取失败:', rname, 'id=' + id); return false; }
       if (isZZZ) this.zzz_role_pictures(e, data);
       else if (isBH3) this.bh3_role_pictures(e, data);
       else if (isSr) this.sr_role_pictures(e, data);
