@@ -1,4 +1,18 @@
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
+
 const NEWS_API = 'https://bbs-api-static.miyoushe.com/painter/wapi/getNewsList';
+
+// 钉住的米游社节点有时把 gzip 正文直接吐出来，却不带 Content-Encoding，
+// undici 不会解压，res.json() 就炸在 1f 8b 魔数上。这里按魔数和响应头自己解。
+function decodePoolBody(buf, encoding = '') {
+  const enc = String(encoding || '').toLowerCase();
+  let out = buf;
+  if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) out = gunzipSync(buf);
+  else if (enc.includes('br')) out = brotliDecompressSync(buf);
+  else if (enc.includes('deflate')) out = inflateSync(buf);
+  return out.toString('utf8');
+}
+
 
 const GAME_META = {
   gs: {
@@ -81,7 +95,9 @@ class OfficialGachaPool {
           signal: AbortSignal.timeout(8000)
         });
         if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
-        return await res.json();
+        const buf = Buffer.from(await res.arrayBuffer());
+        const text = decodePoolBody(buf, res.headers.get('content-encoding'));
+        return JSON.parse(text);
       } catch (err) {
         lastErr = err;
         logger?.mark?.(`[xhh][gacha_pool] ${label} 第 ${attempt} 次失败：${err.message}` + (attempt < 3 ? '，1s 后重试' : '，放弃'));
