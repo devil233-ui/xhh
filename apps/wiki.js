@@ -143,7 +143,7 @@ async function miaoModels() {
     _miaoModels = await import('../../miao-plugin/models/index.js');
   } catch (err) {
     _miaoModels = false;
-    if (config().debug) logger.mark(`[xhh] 未加载 miao-plugin 模型，跳过喵喵别名兜底: ${err?.message || err}`);
+    logger.error(`[xhh] miao-plugin 模型加载失败，喵喵别名兜底不可用: ${err?.message || err}`);
   }
   return _miaoModels;
 }
@@ -316,6 +316,26 @@ function extractHonkaiStarRailData(html = '') {
   };
 }
 
+function wikiCommandText(e) {
+  const msg = String(e?.msg || '');
+  // 原神角色查询 accept() 命中角色后把消息改写成「#角色详情」并停止后续 accept；
+  // 喵喵处理函数也会把 e.msg 改成内部命令。本插件优先级更靠后，这里看到的 e.msg 经常已不是用户输入。
+  const hijacked = /^(?:#角色详情|#喵喵角色WIKI|#喵喵武器WIKI|#喵喵角色攻略|#喵喵角色卡片|#喵喵面板变换)/.test(msg);
+  if (!hijacked) return msg;
+  const raw = String(e?.raw_message || '').replace(/\[CQ:[^\]]*\]/g, ' ');
+  const hit = raw.match(/[＃#井＊※*％%][\s\S]*$/);
+  if (hit) {
+    const text = hit[0].trim()
+      .replace(/^\s*[＃井]\s*/, '#')
+      .replace(/^\s*[＊※]\s*/, '*')
+      .replace(/^\s*％\s*/, '%');
+    if (text && !/^(?:#角色详情|#喵喵)/.test(text)) return text;
+  }
+  const alias = String(e?.roleName || '').trim();
+  if (alias && /^#角色详情/.test(msg)) return `#${alias}`;
+  return msg;
+}
+
 const pr = yaml.get('./plugins/xhh/config/other.yaml').wiki;
 export class Wiki extends plugin {
   constructor(e) {
@@ -381,11 +401,12 @@ export class Wiki extends plugin {
   async illustrated_book(e) {
     if (!config().wiki) return false;
     // 本项目约定：* 前缀代表星铁（同 sr_logs.js），# 前缀代表原神
-    const starPrefix = /^[＃#%]*\*/.test(e.msg);
-    const isSr = starPrefix || e.msg.includes('星铁');
-    const isZZZ = e.msg.includes('绝区零') || e.msg.includes('ZZZ') || /^[＃#]*%/.test(e.msg);
-    const isBH3 = e.msg.includes('崩坏3') || e.msg.includes('崩坏三') || e.msg.includes('崩三') || e.msg.includes('BH3');
-    let name = e.msg
+    const cmd = wikiCommandText(e);
+    const starPrefix = /^[＃#%]*\*/.test(cmd);
+    const isSr = starPrefix || cmd.includes('星铁');
+    const isZZZ = cmd.includes('绝区零') || cmd.includes('ZZZ') || /^[＃#]*%/.test(cmd);
+    const isBH3 = cmd.includes('崩坏3') || cmd.includes('崩坏三') || cmd.includes('崩三') || cmd.includes('BH3');
+    let name = cmd
       .replace(/^[#%*]*/, '')
       .replace(/星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3/gi, '')
       .trim();
@@ -431,7 +452,7 @@ export class Wiki extends plugin {
       for (const { method, args } of checkTypes) {
         if (await this[method](...args, true)) return true;
       }
-    } else if (/^[＃#]/.test(e.msg) && !starPrefix) {
+    } else if (/^[＃#]/.test(cmd) && !starPrefix) {
       // # 前缀 = 原神（用户约定 原神# 星铁* 绝区零%）：只查原神，不做其他游戏兜底
       for (const { method, args } of checkTypes) {
         if (await this[method](...args)) return true;
