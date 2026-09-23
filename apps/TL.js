@@ -3,6 +3,9 @@ import moment from 'moment';
 import fs from 'fs';
 import NoteUser from '../../genshin/model/mys/NoteUser.js';
 import { mhy, render, api, config, yaml, pluginPriority, makeForwardMsg } from '#xhh';
+import { solveByLocalService } from '../utils/captchaVerify.js';
+// 与 apps/captchaNotice.js 同节奏：过码服务放行有延迟，按梯度重试原请求
+const NOTE_RETRY_GAPS = [0, 6000, 15000];
 
 const path = process.cwd();
 
@@ -568,10 +571,22 @@ export class TL extends plugin {
           ? `${this.zzzNoteUrl}?server=${encodeURIComponent(entry?.region || mhy.getServer(uid, 'zzz') || 'prod_gf_cn')}&role_id=${encodeURIComponent(uid)}`
           : game == 'gs' ? this.gsUrl : game == 'sr' ? this.srUrl : this.zzzUrl;
     if (config().debug && uidOverride) logger.mark(`[xhh][TL] ${game} uid=${uid} roleEndpoint=${useRoleEndpoint} url=${url}`);
-    let res = await fetch(url, {
-      method: 'get',
-      headers,
-    }).then(res => res.json());
+    const fetchOnce = () => fetch(url, { method: 'get', headers }).then(res => res.json());
+    let res = await fetchOnce();
+    // 体力小组件是裸 fetch、不经过 MysInfo，captchaNotice 那条全局兜底够不着；
+    // 撞风控码时调本地过码服务（同 captchaNotice 的 0/6/15s 梯度重试），用户无感。
+    const noteCk = headers.Cookie || '';
+    if (noteCk && [1034, 10035, 10041].includes(Number(res?.retcode)) && config().auto_verify_addr) {
+      logger.mark(`[xhh][TL] ${game} uid=${uid} 撞码 retcode=${res.retcode}，自动过码后重试`);
+      const solved = await solveByLocalService({ cookie: noteCk, autoVerifyAddr: config().auto_verify_addr }).catch(() => false);
+      if (solved) {
+        for (const gap of NOTE_RETRY_GAPS) {
+          if (gap) await new Promise((r) => setTimeout(r, gap));
+          res = await fetchOnce().catch(() => false);
+          if (res && Number(res.retcode) === 0) break;
+        }
+      }
+    }
     if ([-10001, 10001, -100].includes(res?.retcode)) {
       if (!san) {
         e.reply('登录验证过期。请重新：扫码绑定 ');

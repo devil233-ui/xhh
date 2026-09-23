@@ -13,12 +13,17 @@ const log = {
 }
 
 /** 本地自动过码：POST {cookie} → 服务跑全流程，返回是否成功 */
-export async function solveByLocalService({ cookie, autoVerifyAddr }) {
+export async function solveByLocalService({ cookie, autoVerifyAddr, clientType = '', deviceId = '', deviceFp = '' }) {
   try {
+    const payload = { cookie }
+    // App 端形态（clientType=2）用于 POST 类接口的过码；过码须与调用方同一套身份
+    if (clientType) payload.clientType = String(clientType)
+    if (deviceId) payload.deviceId = String(deviceId)
+    if (deviceFp) payload.deviceFp = String(deviceFp)
     const res = await fetch(autoVerifyAddr, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cookie }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(360000),
     }).then(r => r.json())
     if (res?.data?.result === 'ok') {

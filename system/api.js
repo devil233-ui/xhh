@@ -5,6 +5,9 @@ import {
 import {
     user
 } from '../apps/user.js';
+import { solveByLocalService } from '../utils/captchaVerify.js';
+// 撞码本地过码优先于 jiapi 代理与 ttocr 打码平台（免费、本地、无第三方依赖）
+const LOCAL_RETRY_GAPS = [0, 6000, 15000];
 
 async function api(e, data = {}) {
     let signActId = {
@@ -266,9 +269,24 @@ async function api(e, data = {}) {
     }
     const sign = data.type.includes('sign');
     const isCaptcha = [1034, 10035].includes(Number(res?.retcode));
-    if (isCaptcha) {
-        const proxyRes = await jiapiProxy(url, obj, game, data.type);
-        if (proxyRes && ![1034, 10035].includes(Number(proxyRes?.retcode))) res = proxyRes;
+    if (isCaptcha && Number(res?.retcode) !== 0) {
+        // 先试本地过码服务（覆盖 1034/10035/10041）：成功后按梯度重试原请求；
+        // 未配地址或过码失败时，保持原行为落回 jiapi 代理。
+        const localCk = obj.headers?.Cookie || '';
+        if (localCk && [1034, 10035, 10041].includes(Number(res?.retcode)) && config().auto_verify_addr) {
+            const solved = await solveByLocalService({ cookie: localCk, autoVerifyAddr: config().auto_verify_addr }).catch(() => false);
+            if (solved) {
+                for (const gap of LOCAL_RETRY_GAPS) {
+                    if (gap) await new Promise((r) => setTimeout(r, gap));
+                    res = await fetch(url, obj).then((r) => r.json()).catch(() => false);
+                    if (res && Number(res.retcode) === 0) break;
+                }
+            }
+        }
+        if (Number(res?.retcode) !== 0 && [1034, 10035].includes(Number(res?.retcode))) {
+            const proxyRes = await jiapiProxy(url, obj, game, data.type);
+            if (proxyRes && ![1034, 10035].includes(Number(proxyRes?.retcode))) res = proxyRes;
+        }
     }
     if (sign && data.manual_captcha && [1034, 10035].includes(Number(res?.retcode))) return res;
     const _err = sign ?
