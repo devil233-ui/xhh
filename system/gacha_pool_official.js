@@ -66,20 +66,36 @@ class OfficialGachaPool {
     return `xhh:gacha_pool:official:${CACHE_VER}:${game}:${this.normalizeVersion(version) || 'latest'}`;
   }
 
+  // 米游社 CDN 节点偶发返回垃圾字节/坏响应（JSON.parse 炸在半截乱码），
+  // 瞬时故障重试即可恢复；隔 1s 再来，最多 3 次尝试。
+  async fetchJsonRetry(url, label) {
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Referer: 'https://www.miyoushe.com',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        lastErr = err;
+        logger?.mark?.(`[xhh][gacha_pool] ${label} 第 ${attempt} 次失败：${err.message}` + (attempt < 3 ? '，1s 后重试' : '，放弃'));
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    throw lastErr;
+  }
+
   async requestNews(game, pageSize = 30) {
     const meta = GAME_META[game];
     if (!meta) return [];
     const url = `${NEWS_API}?gids=${meta.gid}&page_size=${pageSize}&type=1`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Referer: 'https://www.miyoushe.com',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!res.ok) throw new Error(`米游社公告接口 HTTP ${res.status}`);
-    const json = await res.json();
+    const json = await this.fetchJsonRetry(url, '米游社卡池公告获取');
     if (json?.retcode !== 0 || !Array.isArray(json?.data?.list)) {
       throw new Error(`米游社公告接口异常：${JSON.stringify(json).slice(0, 180)}`);
     }
@@ -90,16 +106,7 @@ class OfficialGachaPool {
     const meta = GAME_META[game];
     if (!meta || !postId) return null;
     const url = `https://bbs-api.miyoushe.com/post/wapi/getPostFull?gids=${meta.gid}&read=1&post_id=${postId}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Referer: 'https://www.miyoushe.com',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!res.ok) throw new Error(`米游社公告详情 HTTP ${res.status}`);
-    const json = await res.json();
+    const json = await this.fetchJsonRetry(url, '米游社公告详情获取');
     if (json?.retcode !== 0) throw new Error(`米游社公告详情异常：${JSON.stringify(json).slice(0, 180)}`);
     return json?.data?.post?.post || null;
   }
