@@ -10,7 +10,8 @@ import QR from "qrcode";
 import api from "./api.js";
 import {
     MysSign,
-    zd_MysSign
+    zd_MysSign,
+    BbsSign,
 } from "./sign.js";
 
 let isTrss = true
@@ -194,4 +195,5 @@ export {
     getSource,
     MysSign,
     zd_MysSign,
+    BbsSign,
 };

@@ -27,3 +27,8 @@ sign_group:
 #           - 123456456
 #           - 987651234
 sign:
+
+#社区签到白名单群（只对白名单群做社区签到；留空则跟随 sign_group）
+#bbs_sign_group:
+#       - 1234567890
+bbs_sign_group:

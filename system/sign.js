@@ -1,49 +1,156 @@
+import fetch from 'node-fetch';
+import fs from 'fs';
+
 import {
     sleep,
     api,
     mhy,
     render,
-    yaml
-} from "#xhh";
-import NoteUser from "../../genshin/model/mys/NoteUser.js";
+    yaml,
+    config
+} from '#xhh';
+import NoteUser from '../../genshin/model/mys/NoteUser.js';
+import { manualGeetest } from './manual_geetest.js';
+
+
+function cookiePart(ck = '', key) {
+    const m = String(ck).match(new RegExp(`(?:^|;\\s*)${key}=([^;]+)`));
+    return m ? m[1] : '';
+}
+
+function getStokenEntry(qq, uid) {
+    const path = `./plugins/xhh/data/Stoken/${qq}.yaml`;
+    if (!fs.existsSync(path)) return null;
+    try {
+        return (yaml.get(path) || {})[uid] || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function getStokenData(qq) {
+    const path = `./plugins/xhh/data/Stoken/${qq}.yaml`;
+    if (!fs.existsSync(path)) return {};
+    try {
+        return yaml.get(path) || {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function isBh3Region(region = '') {
+    return ['android01', 'ios01', 'pc01', 'bb01', 'yyb01', 'hun01', 'hun02'].includes(String(region || ''));
+}
+
+async function hasXhhBh3Stoken(qq) {
+    const data = getStokenData(qq);
+    return Object.values(data).some(entry => entry?.stuid && entry?.stoken && isBh3Region(entry?.region));
+}
+
+async function getBh3SignTargets(e) {
+    const qq = e.user_id;
+    const data = getStokenData(qq);
+    const selectedUid = await redis.get(`xhh:bh3_uid:${qq}`);
+    const selectedRegion = selectedUid ? await redis.get(`xhh:bh3_region:${qq}`) : null;
+    const targets = [];
+    const add = async (uid, entry = {}) => {
+        if (!uid || !entry?.stuid || !entry?.stoken) return;
+        if (!isBh3Region(entry.region || selectedRegion)) return;
+        if (targets.some(v => String(v.uid) === String(uid))) return;
+        const rawCk = entry.ck_stoken || `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}`;
+        const ck = await ensureCookieToken(e, rawCk, entry);
+        targets.push({ uid: String(uid), ck, server: entry.region || selectedRegion || 'android01' });
+    };
+
+    if (selectedUid && data[selectedUid]) await add(selectedUid, data[selectedUid]);
+    for (const [uid, entry] of Object.entries(data)) await add(uid, entry);
+    return targets;
+}
+
+async function ensureCookieToken(e, ck, entry = null) {
+    if (!ck || /(?:^|;\s*)cookie_token=/.test(ck)) return ck;
+    const stuid = entry?.stuid || cookiePart(ck, 'stuid') || cookiePart(ck, 'ltuid');
+    const stoken = entry?.stoken || cookiePart(ck, 'stoken');
+    if (!stuid || !stoken) return ck;
+    try {
+        const headers = mhy.getHeaders(e, ck);
+        const cookieRes = await fetch(`https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}`, { method: 'GET', headers }).then(r => r.json());
+        const ltokenRes = await fetch('https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken', { method: 'GET', headers }).then(r => r.json());
+        const cookieToken = cookieRes?.data?.cookie_token;
+        const ltoken = ltokenRes?.data?.ltoken || entry?.ltoken;
+        if (cookieToken && ltoken) return `ltoken=${ltoken};ltuid=${stuid};cookie_token=${cookieToken};account_id=${stuid};`;
+        if (cookieToken) return `stuid=${stuid};stoken=${stoken};cookie_token=${cookieToken};account_id=${stuid};`;
+    } catch (err) {
+        if (config().debug) logger.mark(`[xhh][sign] refresh cookie_token failed: ${err.message}`);
+    }
+    return ck;
+}
+
+async function getSignCookieAndServer(e, game, uid, ck) {
+    let server;
+    if (game === 'bh3') {
+        const entry = getStokenEntry(e.user_id, uid);
+        if (entry) {
+            server = entry.region;
+            ck = entry.ck_stoken || ck;
+        }
+        ck = await ensureCookieToken(e, ck, entry);
+    }
+    return { ck, server };
+}
 
 async function MysSign(e, games) {
+    const hasBh3Xhh = games.includes('bh3') && await hasXhhBh3Stoken(e.user_id);
     if (
         !e.user.getMysUser() &&
-        !e.user.getMysUser("sr") &&
-        !e.user.getMysUser("zzz")
+        !e.user.getMysUser('sr') &&
+        !e.user.getMysUser('zzz') &&
+        !e.user.getMysUser('bh3') &&
+        !hasBh3Xhh
     )
-        return e.reply("未绑定米游社ck,请发送[扫码绑定]", true);
+        return e.reply('未绑定米游社ck,请发送[扫码绑定]', true);
     let msgs = [];
     let bj = 1;
     for (let game of games) {
-        const mys = e.user.getMysUser(game);
-        if (!mys) continue;
-        const ck = mys.ck;
-        const uids = mys.uids;
-        const game_name = game == "gs" ? "原神" : game == "sr" ? "星铁" : "绝区零";
-        for (let i = 0; i < uids[game].length; i++) {
-            const uid = uids[game][i];
-            if (i > 0) await sleep(1000);
-            let headers = mhy.getHeaders(e, ck);
-            const Ds = mhy.getDsSign();
-            headers.DS = Ds;
-            headers.Origin = "https://act.mihoyo.com";
-            headers.Referer = "https://act.mihoyo.com";
-            //必加参数
-            headers["x-rpc-signgame"] =
-                game == "zzz" ? "zzz" : game == "sr" ? "hkrpg" : "hk4e";
-            let data = {
-                game,
-                uid,
-                headers,
-                type: "sign_info",
-            };
+        const game_name = game == 'gs' ? '原神' : game == 'sr' ? '星铁' : game == 'zzz' ? '绝区零' : '崩坏3';
+        let targets = [];
+        if (game === 'bh3') {
+            targets = await getBh3SignTargets(e);
+        }
+        if (!targets.length) {
+            const mys = e.user.getMysUser(game);
+            if (!mys) continue;
+            const ck = mys.ck;
+            const uids = Array.isArray(mys.uids?.[game]) ? mys.uids[game] : [];
+            targets = uids.map(uid => ({ uid, ck, server: null }));
+        }
+        if (!targets.length) continue;
+            for (let i = 0; i < targets.length; i++) {
+                const { uid, ck, server } = targets[i];
+                if (i > 0) await sleep(1000);
+                const signOpt = game === 'bh3' && server ? { ck, server } : await getSignCookieAndServer(e, game, uid, ck);
+                let headers = mhy.getHeaders(e, signOpt.ck);
+                const Ds = mhy.getDsSign();
+                headers.DS = Ds;
+                headers.Origin = 'https://act.mihoyo.com';
+                headers.Referer = 'https://act.mihoyo.com';
+                //必加参数
+                if (game === 'gs') headers['x-rpc-signgame'] = 'hk4e';
+                else if (game === 'sr') headers['x-rpc-signgame'] = 'hkrpg';
+                else if (game === 'zzz') headers['x-rpc-signgame'] = 'zzz';
+                else delete headers['x-rpc-signgame'];
+                let data = {
+                    game,
+                    uid,
+                    headers,
+                    server: signOpt.server,
+                    type: 'sign_info',
+                };
             let res = await api(e, data);
             /**
              * 报错
              */
-            if (typeof res == "string") {
+            if (typeof res == 'string') {
                 msgs.push({
                     game: game_name,
                     uid: uid,
@@ -58,13 +165,14 @@ async function MysSign(e, games) {
                 const day = res.data.total_sign_day;
                 const rew = await reward(e, data);
                 if (res.data.is_sign == true) {
+                    const award = rew[day - 1] || {};
                     msgs.push({
                         game: game_name,
                         uid: uid,
-                        icon: rew[day - 1].icon,
-                        tip: "今天已经签过了",
+                        icon: award.icon,
+                        tip: '今日已签',
                         day: day,
-                        cnt: rew[day - 1].cnt,
+                        cnt: award.cnt || '',
                     });
                     if (bj) {
                         add(e);
@@ -73,17 +181,31 @@ async function MysSign(e, games) {
                 } else {
                     //未签到,开始签到
                     logger.mark(`[${game_name}签到]QQ: ${e.user_id},UID: ${uid}`);
-                    data.type = "sign";
-                    const sign_res = await api(e, data);
+                    data.type = 'sign';
+                    data.manual_captcha = true;
+                    let sign_res = await api(e, data);
+                    if ([1034, 10035].includes(Number(sign_res?.retcode)) && sign_res?.data?.gt) {
+                        const validate = await manualGeetest(e, { ...sign_res.data, uid }, `${game_name} UID:${uid} 签到`);
+                        if (validate?.validate) {
+                            const retryHeaders = {
+                                ...headers,
+                                'x-rpc-challenge': validate.challenge,
+                                'x-rpc-validate': validate.validate,
+                                'x-rpc-seccode': validate.seccode || `${validate.validate}|jordan`,
+                            };
+                            sign_res = await api(e, { ...data, headers: retryHeaders, manual_captcha: false });
+                        }
+                    }
                     //签到成功
                     if (sign_res.retcode == 0) {
+                        const award = rew[day] || {};
                         msgs.push({
                             game: game_name,
                             uid: uid,
-                            icon: rew[day].icon,
-                            tip: "签到成功",
+                            icon: award.icon,
+                            tip: '签到成功',
                             day: day + 1,
-                            cnt: rew[day].cnt,
+                            cnt: award.cnt || '',
                         });
                         if (bj) {
                             add(e);
@@ -91,11 +213,23 @@ async function MysSign(e, games) {
                         }
                     }
                     //签到失败
-                    else if (typeof sign_res == "string") {
+                    else if (typeof sign_res == 'string') {
                         msgs.push({
                             game: game_name,
                             uid: uid,
                             tip: sign_res,
+                        });
+                    } else if ([1034, 10035].includes(Number(sign_res?.retcode))) {
+                        msgs.push({
+                            game: game_name,
+                            uid: uid,
+                            tip: '签到遇到验证码，手动验证未完成或验证失败',
+                        });
+                    } else if (sign_res?.message) {
+                        msgs.push({
+                            game: game_name,
+                            uid: uid,
+                            tip: sign_res.message,
                         });
                     }
                 }
@@ -108,14 +242,14 @@ async function MysSign(e, games) {
         name: e.sender.card || e.sender.nickname,
     };
     //渲染
-    return render("sign/sign", data_, {
+    return render('sign/sign', data_, {
         e,
         ret: true,
     });
 }
 
 function add(e) {
-    const path = "./plugins/xhh/config/sign.yaml";
+    const path = './plugins/xhh/config/sign.yaml';
     const data = yaml.get(path);
     if (!data.zd_sign || !e.isGroup) return;
     if (data.sign_group && !data.sign_group.includes(e.group_id)) return;
@@ -130,14 +264,157 @@ function add(e) {
     if (qqs.includes(e.user_id)) return;
     qqs.push(e.user_id);
     data.sign[e.group_id] = qqs;
-    return yaml.set(path, "sign", data.sign);
+    return yaml.set(path, 'sign', data.sign);
+}
+
+
+const BBS_FORUMS = [
+    { name: '崩坏3', signId: '1', forumId: '1' },
+    { name: '原神', signId: '2', forumId: '26' },
+    { name: '崩坏2', signId: '3', forumId: '30' },
+    { name: '未定事件簿', signId: '4', forumId: '37' },
+    { name: '大别野', signId: '5', forumId: '34' },
+    { name: '崩坏星穹铁道', signId: '6', forumId: '52' },
+    { name: '绝区零', signId: '8', forumId: '57' },
+];
+
+function getBbsAccounts(e) {
+    const path = `./plugins/xhh/data/Stoken/${e.user_id}.yaml`;
+    const accounts = new Map();
+    if (fs.existsSync(path)) {
+        const data = yaml.get(path) || {};
+        for (const entry of Object.values(data)) {
+            if (!entry?.stuid || !entry?.stoken) continue;
+            if (accounts.has(String(entry.stuid))) continue;
+            const ck = entry.ck_stoken || `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}`;
+            accounts.set(String(entry.stuid), { stuid: String(entry.stuid), ck });
+        }
+    }
+    return [...accounts.values()];
+}
+
+function bbsBaseHeaders(e, ck, body = '', useBodyDs = false) {
+    const headers = mhy.getHeaders(e, ck);
+    headers.Cookie = ck;
+    headers.DS = useBodyDs ? mhy.getDs2('', body, 't0qEgfub6cvueAPgR5m9aQWWVciEer7v') : mhy.getDs('S9Hrn38d2b55PamfIR9BNA3Tx9sQTOem');
+    headers['Content-Type'] = 'application/json';
+    headers['x-rpc-app_version'] = '2.70.1';
+    headers['x-rpc-client_type'] = '2';
+    headers['x-rpc-device_model'] = 'Mi 10';
+    headers['x-rpc-device_name'] = 'Mi 10';
+    headers['x-rpc-channel'] = 'miyousheluodi';
+    headers['x-rpc-sys_version'] = '12';
+    headers['x-rpc-device_id'] = mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
+    headers.Referer = 'https://app.mihoyo.com';
+    headers['User-Agent'] = 'okhttp/4.8.0';
+    delete headers.Origin;
+    delete headers['X-Requested-With'];
+    return headers;
+}
+
+async function bbsJson(e, account, url, body = null, useBodyDs = false) {
+    const bodyText = body ? JSON.stringify(body) : '';
+    const headers = bbsBaseHeaders(e, account.ck, bodyText, useBodyDs);
+    return fetch(url, {
+        method: body ? 'POST' : 'GET',
+        headers,
+        body: body ? bodyText : undefined,
+    }).then(r => r.json());
+}
+
+async function bbsForumTasks(e, account, forum) {
+    const listUrl = `https://bbs-api.miyoushe.com/post/api/getForumPostList?forum_id=${forum.forumId}&is_good=false&is_hot=false&page_size=20&sort_type=1`;
+    const listRes = await bbsJson(e, account, listUrl);
+    const posts = (listRes?.data?.list || []).map(v => v.post).filter(v => v?.post_id);
+    if (!posts.length) return '浏览0 点赞0 分享0';
+    let browse = 0, vote = 0, share = 0;
+    for (const post of posts.slice(0, 3)) {
+        const res = await bbsJson(e, account, `https://bbs-api.miyoushe.com/post/api/getPostFull?post_id=${post.post_id}`);
+        if (res?.retcode === 0) browse++;
+        await sleep(200);
+    }
+    for (const post of posts.slice(0, 5)) {
+        const res = await bbsJson(e, account, 'https://bbs-api.miyoushe.com/post/api/post/upvote', { post_id: post.post_id, is_cancel: false });
+        if (res?.retcode === 0) vote++;
+        if (res?.retcode === -300) break;
+        await sleep(200);
+    }
+    const shareRes = await bbsJson(e, account, `https://bbs-api.miyoushe.com/apihub/api/getShareConf?entity_id=${posts[0].post_id}&entity_type=1`);
+    if (shareRes?.retcode === 0) share++;
+    return `浏览${browse} 点赞${vote} 分享${share}`;
+}
+
+async function bbsForumSign(e, account, forum) {
+    const signRes = await bbsJson(e, account, 'https://bbs-api.miyoushe.com/apihub/app/api/signIn', { gids: forum.signId }, true);
+    let signTip;
+    if (signRes?.retcode === 0) signTip = '签到成功';
+    else if (signRes?.retcode === 1008 || /已经|已签到|重复/.test(signRes?.message || '')) signTip = '今日已签';
+    else if (signRes?.retcode === 1034) return '遇到验证码';
+    else if (signRes?.retcode === -100) return '登录失效';
+    else signTip = signRes?.message || `失败(${signRes?.retcode ?? '无返回'})`;
+    let taskTip = '';
+    try {
+        taskTip = await bbsForumTasks(e, account, forum);
+    } catch (err) {
+        if (config().debug) logger.mark(`[xhh][bbs_task] ${forum.name}: ${err.message}`);
+    }
+    return taskTip ? `${signTip} ${taskTip}` : signTip;
+}
+
+async function BbsAllSign(e) {
+    const accounts = getBbsAccounts(e);
+    if (!accounts.length) return e.reply('未找到米游社SToken，请先扫码绑定', true);
+    const lines = ['米游社社区全部签到'];
+    for (const account of accounts) {
+        lines.push(`\n通行证 ${account.stuid}`);
+        for (const forum of BBS_FORUMS) {
+            let tip = '签到异常';
+            try {
+                tip = await bbsForumSign(e, account, forum);
+            } catch (err) {
+                logger.error(`[xhh][bbs_sign] ${account.stuid} ${forum.name}: ${err.message}`);
+            }
+            lines.push(`${forum.name}：${tip}`);
+            await sleep(500);
+        }
+    }
+    return e.reply(lines.join('\n'), true);
+}
+
+async function BbsSign(e) {
+    if (/全部/.test(e.msg || '')) return BbsAllSign(e);
+    const mys = e.user.getMysUser('gs');
+    if (!mys) return e.reply('未绑定米游社,请发送[扫码绑定]', true);
+    const ck = mys.ck;
+    let headers = mhy.getHeaders(e, ck);
+    headers.DS = mhy.getDsSign();
+    headers.Origin = 'https://act.mihoyo.com';
+    headers.Referer = 'https://act.mihoyo.com';
+
+    const data = { headers, type: 'bbs_sign_info' };
+    let res = await api(e, data);
+    if (typeof res == 'string') return e.reply(`社区签到失败：${res}`, true);
+    if (res?.retcode !== 0) return e.reply('社区签到查询失败', true);
+
+    const info = res.data || {};
+    if (info.is_sign) {
+        return e.reply(`✅ 今日已签到米游社社区\n连续签到 ${info.total_sign_day || 0} 天`, true);
+    }
+
+    data.type = 'bbs_sign';
+    const signRes = await api(e, data);
+    if (signRes?.retcode === 0) {
+        return e.reply(`✅ 社区签到成功！\n连续签到 ${(info.total_sign_day || 0) + 1} 天`, true);
+    }
+    return e.reply('❌ 社区签到失败，请稍后重试', true);
 }
 
 async function reward(e, data) {
     let rew = await redis.get(`xhh:sign:${data.game}`);
     if (rew) return JSON.parse(rew);
-    data.type = "sign_home";
+    data.type = 'sign_home';
     const res = await api(e, data);
+    if (!Array.isArray(res?.data?.awards)) return [];
     const time = getSecondsToMidnight();
     await redis.set(`xhh:sign:${data.game}`, JSON.stringify(res.data.awards), {
         EX: time,
@@ -163,7 +440,7 @@ async function zd_MysSign(qqs) {
         z_num = 0,
         cg_qqs = [],
         sbai_qqs = [];
-    const games = [ "gs", "sr", "zzz" ];
+    const games = ['gs', 'sr', 'zzz', 'bh3'];
     for (let qq of qqs) {
         let e = {};
         e.user_id = qq;
@@ -177,25 +454,29 @@ async function zd_MysSign(qqs) {
                 z_num++;
                 const uid = uids[i];
                 if (i > 0) await sleep(1000);
-                let headers = mhy.getHeaders(e, ck);
+                const signOpt = await getSignCookieAndServer(e, game, uid, ck);
+                let headers = mhy.getHeaders(e, signOpt.ck);
                 const Ds = mhy.getDsSign();
                 headers.DS = Ds;
-                headers.Origin = "https://act.mihoyo.com";
-                headers.Referer = "https://act.mihoyo.com";
+                headers.Origin = 'https://act.mihoyo.com';
+                headers.Referer = 'https://act.mihoyo.com';
                 //必加参数
-                headers["x-rpc-signgame"] =
-                    game == "zzz" ? "zzz" : game == "sr" ? "hkrpg" : "hk4e";
+                if (game === 'gs') headers['x-rpc-signgame'] = 'hk4e';
+                else if (game === 'sr') headers['x-rpc-signgame'] = 'hkrpg';
+                else if (game === 'zzz') headers['x-rpc-signgame'] = 'zzz';
+                else delete headers['x-rpc-signgame'];
                 let data = {
                     game,
                     uid,
                     headers,
-                    type: "sign_info",
+                    server: signOpt.server,
+                    type: 'sign_info',
                 };
                 let res = await api(e, data);
                 /**
                  * 报错
                  */
-                if (typeof res == "string") {
+                if (typeof res == 'string') {
                     if (!sbai_qqs.includes(qq)) {
                         if (cg_qqs.includes(qq)) {
                             const index = cg_qqs.indexOf(qq);
@@ -217,7 +498,7 @@ async function zd_MysSign(qqs) {
                         continue;
                     } else {
                         //未签到,开始签到
-                        data.type = "sign";
+                        data.type = 'sign';
                         const sign_res = await api(e, data);
                         //签到成功
                         if (sign_res.retcode == 0) {
@@ -228,7 +509,7 @@ async function zd_MysSign(qqs) {
                             continue;
                         }
                         //签到失败
-                        else if (typeof sign_res == "string") {
+                        else if (typeof sign_res == 'string') {
                             if (!sbai_qqs.includes(qq)) {
                                 if (cg_qqs.includes(qq)) {
                                     const index = cg_qqs.indexOf(qq);
@@ -257,5 +538,6 @@ async function zd_MysSign(qqs) {
 
 export {
     MysSign,
-    zd_MysSign
+    zd_MysSign,
+    BbsSign,
 };
