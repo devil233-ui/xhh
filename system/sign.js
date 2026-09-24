@@ -11,6 +11,7 @@ import {
 } from '#xhh';
 import NoteUser from '../../genshin/model/mys/NoteUser.js';
 import { manualGeetest } from './manual_geetest.js';
+import { solveByLocalService } from '../utils/captchaVerify.js';
 
 
 function cookiePart(ck = '', key) {
@@ -293,7 +294,7 @@ function getBbsAccounts(e) {
     return [...accounts.values()];
 }
 
-function bbsBaseHeaders(e, ck, body = '', useBodyDs = false) {
+function bbsBaseHeaders(e, ck, body = '', useBodyDs = false, deviceId = '') {
     const headers = mhy.getHeaders(e, ck);
     headers.Cookie = ck;
     headers.DS = useBodyDs ? mhy.getDs2('', body, 't0qEgfub6cvueAPgR5m9aQWWVciEer7v') : mhy.getDs('S9Hrn38d2b55PamfIR9BNA3Tx9sQTOem');
@@ -304,7 +305,7 @@ function bbsBaseHeaders(e, ck, body = '', useBodyDs = false) {
     headers['x-rpc-device_name'] = 'Mi 10';
     headers['x-rpc-channel'] = 'miyousheluodi';
     headers['x-rpc-sys_version'] = '12';
-    headers['x-rpc-device_id'] = mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
+    headers['x-rpc-device_id'] = deviceId || mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
     headers.Referer = 'https://app.mihoyo.com';
     headers['User-Agent'] = 'okhttp/4.8.0';
     delete headers.Origin;
@@ -312,15 +313,22 @@ function bbsBaseHeaders(e, ck, body = '', useBodyDs = false) {
     return headers;
 }
 
-async function bbsJson(e, account, url, body = null, useBodyDs = false) {
+async function bbsJson(e, account, url, body = null, useBodyDs = false, extra = null) {
     const bodyText = body ? JSON.stringify(body) : '';
-    const headers = bbsBaseHeaders(e, account.ck, bodyText, useBodyDs);
+    const headers = bbsBaseHeaders(e, account.ck, bodyText, useBodyDs, extra?.deviceId);
+    // 过码后重发用：米游社颁的 challenge 要放在 x-rpc-challenge 里带回来
+    if (extra?.challenge) headers['x-rpc-challenge'] = extra.challenge;
     return fetch(url, {
         method: body ? 'POST' : 'GET',
         headers,
         body: body ? bodyText : undefined,
     }).then(r => r.json());
 }
+
+// 社区接口撞码判定（同 TL signClient）：回执带 challenge/gt，或风控码
+const isBbsCaptcha = res => !!(res?.data?.challenge || res?.data?.gt
+    || [1034, 5003, 10035, 10041].includes(Number(res?.retcode)));
+const BBS_CAPTCHA_GAPS = [0, 6000, 15000];
 
 async function bbsForumTasks(e, account, forum) {
     const listUrl = `https://bbs-api.miyoushe.com/post/api/getForumPostList?forum_id=${forum.forumId}&is_good=false&is_hot=false&page_size=20&sort_type=1`;
@@ -345,7 +353,31 @@ async function bbsForumTasks(e, account, forum) {
 }
 
 async function bbsForumSign(e, account, forum) {
-    const signRes = await bbsJson(e, account, 'https://bbs-api.miyoushe.com/apihub/app/api/signIn', { gids: forum.signId }, true);
+    // 社区签到是 App 端 POST 接口：device_id 全程同一套（过码与重发同身份），
+    // 撞码时走本地过码（App 端形态 clientType=2），拿到米游社颁的 challenge
+    // 当 x-rpc-challenge 头按梯度重发 —— 光「清风险」对 POST 类不管用（TL 米游币实测）。
+    const signInUrl = 'https://bbs-api.miyoushe.com/apihub/app/api/signIn';
+    const deviceId = mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
+    let signRes = await bbsJson(e, account, signInUrl, { gids: forum.signId }, true, { deviceId });
+    const autoAddr = config().auto_verify_addr;
+    if (isBbsCaptcha(signRes) && autoAddr) {
+        const vc = { challenge: '' };
+        const passed = await solveByLocalService({
+            cookie: account.ck,
+            autoVerifyAddr: autoAddr,
+            clientType: '2',
+            deviceId,
+            challengeOut: vc,
+        }).catch(() => false);
+        if (passed) {
+            for (const gap of BBS_CAPTCHA_GAPS) {
+                if (gap) await sleep(gap);
+                signRes = await bbsJson(e, account, signInUrl, { gids: forum.signId }, true, { deviceId, challenge: vc.challenge });
+                if (!isBbsCaptcha(signRes)) break;
+                logger.mark(`[xhh][bbs_sign] ${forum.name} 过码后重签仍被拦 retcode=${signRes?.retcode}`);
+            }
+        }
+    }
     let signTip;
     if (signRes?.retcode === 0) signTip = '签到成功';
     else if (signRes?.retcode === 1008 || /已经|已签到|重复/.test(signRes?.message || '')) signTip = '今日已签';

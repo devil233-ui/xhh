@@ -274,8 +274,21 @@ async function api(e, data = {}) {
         // 未配地址或过码失败时，保持原行为落回 jiapi 代理。
         const localCk = obj.headers?.Cookie || '';
         if (localCk && [1034, 10035, 10041].includes(Number(res?.retcode)) && config().auto_verify_addr) {
-            const solved = await solveByLocalService({ cookie: localCk, autoVerifyAddr: config().auto_verify_addr }).catch(() => false);
+            // 社区类接口（bbs_*）是 App 端 POST：过码须用 App 形态（clientType=2）、
+            // 与调用方同一套 device_id，成功后带米游社颁的 x-rpc-challenge 重发；
+            // 其余接口保持网页端默认形态、直接重发。
+            const isBbsApi = String(data.type || '').startsWith('bbs_');
+            const clientId = isBbsApi ? (obj.headers['x-rpc-device_id'] || '') : '';
+            const vc = { challenge: '' };
+            const solved = await solveByLocalService({
+                cookie: localCk,
+                autoVerifyAddr: config().auto_verify_addr,
+                clientType: isBbsApi ? '2' : '',
+                deviceId: clientId,
+                challengeOut: isBbsApi ? vc : null,
+            }).catch(() => false);
             if (solved) {
+                if (isBbsApi && vc.challenge) obj.headers['x-rpc-challenge'] = vc.challenge;
                 for (const gap of LOCAL_RETRY_GAPS) {
                     if (gap) await new Promise((r) => setTimeout(r, gap));
                     res = await fetch(url, obj).then((r) => r.json()).catch(() => false);

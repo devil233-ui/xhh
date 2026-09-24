@@ -13,7 +13,7 @@ const log = {
 }
 
 /** 本地自动过码：POST {cookie} → 服务跑全流程，返回是否成功 */
-export async function solveByLocalService({ cookie, autoVerifyAddr, clientType = '', deviceId = '', deviceFp = '' }) {
+export async function solveByLocalService({ cookie, autoVerifyAddr, clientType = '', deviceId = '', deviceFp = '', challengeOut = null }) {
   try {
     const payload = { cookie }
     // App 端形态（clientType=2）用于 POST 类接口的过码；过码须与调用方同一套身份
@@ -28,6 +28,8 @@ export async function solveByLocalService({ cookie, autoVerifyAddr, clientType =
     }).then(r => r.json())
     if (res?.data?.result === 'ok') {
       log.mark(`[xhh][verify] 本地服务自动过码成功（第 ${res.data.round} 轮）`)
+      // POST 类接口重发时要把米游社颁的 challenge 当 x-rpc-challenge 头带上
+      if (challengeOut) challengeOut.challenge = res.data.challenge || ''
       return true
     }
     log.mark(`[xhh][verify] 本地服务未过码: ${JSON.stringify(res).slice(0, 120)}`)
