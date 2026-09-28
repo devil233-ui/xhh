@@ -24,14 +24,14 @@ for (const _path of paths_) {
     continue;
   }
 
-  let cfg = yaml.get("./plugins/xhh/config/" + _path);
-  let def_cfg = yaml.get(def_cfg_path);
+  let cfg = yaml.get("./plugins/xhh/config/" + _path) || {};
+  let def_cfg = yaml.get(def_cfg_path) || {};
 
-  if (Object.keys(cfg).length != Object.keys(def_cfg).length) {
-    fs.cpSync(def_cfg_path, cfg_path);
-    for (let v in cfg) {
-      if (Object.keys(def_cfg).includes(v)) yaml.set(cfg_path, v, cfg[v]);
-    }
+  // 只补默认配置里新增、用户配置里还没有的键；不覆盖、不删除用户已有的键。
+  // 旧逻辑在键数不一致时用默认配置整份覆盖用户配置、再回填两边都有的键，
+  // 结果是把用户自定义或锅巴面板写入的键静默抹掉（debug、abyss_report_* 等）。
+  for (const key of Object.keys(def_cfg)) {
+    if (!(key in cfg)) yaml.set(cfg_path, key, def_cfg[key]);
   }
 }
 
