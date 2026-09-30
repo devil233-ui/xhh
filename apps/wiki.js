@@ -325,12 +325,13 @@ function wikiCommandText(e) {
   const hijacked = /^(?:#角色详情|#喵喵角色WIKI|#喵喵武器WIKI|#喵喵角色攻略|#喵喵角色卡片|#喵喵面板变换)/.test(msg);
   if (!hijacked) return msg;
   const raw = String(e?.raw_message || '').replace(/\[CQ:[^\]]*\]/g, ' ');
-  const hit = raw.match(/[＃#井＊※*％%][\s\S]*$/);
+  const hit = raw.match(/[＃#井＊※*％%！!][\s\S]*$/);
   if (hit) {
     const text = hit[0].trim()
       .replace(/^\s*[＃井]\s*/, '#')
       .replace(/^\s*[＊※]\s*/, '*')
-      .replace(/^\s*％\s*/, '%');
+      .replace(/^\s*％\s*/, '%')
+      .replace(/^\s*！\s*/, '!');
     if (text && !/^(?:#角色详情|#喵喵)/.test(text)) return text;
   }
   const alias = String(e?.roleName || '').trim();
@@ -348,21 +349,21 @@ export class Wiki extends plugin {
       priority: pr || -99,
       rule: [
         {
-          reg: '^[#%*]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*(.+)图鉴$',
+          reg: '^[#＃%％*＊※!！]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*(.+)图鉴$',
           fnc: 'illustrated_book',
         },
         {
-          reg: '^[#%*]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*图鉴\\s*(.+)$',
+          reg: '^[#＃%％*＊※!！]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*图鉴\\s*(.+)$',
           fnc: 'illustrated_book',
           // 装备快捷词免「图鉴」后缀：词尾即强意图标识（专武/专属音擎/推荐驱动盘等），
           // 名称清洗与游戏前缀逻辑对无「图鉴」形态天然兼容；普通条目不做可选，
           // 避免宽匹配吞掉普通聊天与其他插件的命令。
-          reg: '^[#%*]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*(.+(?:专武|专属武器|专属音擎|签名音擎|专属驱动盘|推荐驱动盘|驱动盘套|驱动套))$',
+          reg: '^[#＃%％*＊※!！]*(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*(.+(?:专武|专属武器|专属音擎|签名音擎|专属驱动盘|推荐驱动盘|驱动盘套|驱动套))$',
           fnc: 'illustrated_book',
           // 强制游戏前缀 + 图鉴可选：原神 #、星铁 *、绝区零 %（* 前缀的星铁语义沿用本插件约定）。
           // 有前缀即是明确指令意图，图鉴二字可省（#可可莉、*希儿、%绯月）；
           // 无前缀的消息不做可选——不吞普通聊天和其他插件命令。
-          reg: '^([#%*])(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*([^\\s](?:.*?))(?:图鉴)?$',
+          reg: '^([#＃%％*＊※!！])(星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3)?\\s*([^\\s](?:.*?))(?:图鉴)?$',
           fnc: 'illustrated_book',
         },
       ],
@@ -450,17 +451,26 @@ export class Wiki extends plugin {
 
   async illustrated_book(e) {
     if (!config().wiki) return false;
-    // 本项目约定：* 前缀代表星铁（同 sr_logs.js），# 前缀代表原神
+    // 游戏前缀（全角半角都认）：# / ＃ = 原神，* / ＊ / ※ = 星铁，% / ％ = 绝区零，! / ！ = 崩三。
+    // 消息里写明游戏名（星铁 / 绝区零 / 崩坏3…）时以它为准（loader 也会把 *x / %x 重写成 #星铁x / #绝区零x）。
+    // 既没有前缀也没写游戏名的消息直接不响应：以前会跨游戏兜底逐个试探，
+    // 撞上 CDN 坏节点能把一条指令拖到几分钟；无前缀的「xx图鉴」也多半不是给本插件的。
     const cmd = wikiCommandText(e);
-    const starPrefix = /^[＃#%]*\*/.test(cmd);
-    const isSr = starPrefix || cmd.includes('星铁');
-    const isZZZ = cmd.includes('绝区零') || cmd.includes('ZZZ') || /^[＃#]*%/.test(cmd);
-    const isBH3 = cmd.includes('崩坏3') || cmd.includes('崩坏三') || cmd.includes('崩三') || cmd.includes('BH3');
+    const PREFIX_GAME = { '#': 'gs', '＃': 'gs', '*': 'sr', '＊': 'sr', '※': 'sr', '%': 'zzz', '％': 'zzz', '!': 'bh3', '！': 'bh3' };
+    const keywordGame = /绝区零|ZZZ/i.test(cmd) ? 'zzz'
+      : /崩坏3|崩坏三|崩三|BH3/i.test(cmd) ? 'bh3'
+        : /星铁|星穹铁道/.test(cmd) ? 'sr'
+          : /原神/.test(cmd) ? 'gs' : '';
+    const game = keywordGame || PREFIX_GAME[cmd[0]] || '';
+    if (!game) return false;
+    const isSr = game === 'sr';
+    const isZZZ = game === 'zzz';
+    const isBH3 = game === 'bh3';
     let name = cmd
-      .replace(/^[#%*]*/, '')
+      .replace(/^[#＃%％*＊※!！]*/, '')
       // 插件前缀（xhh菲欧妮图鉴 / 小花火菲欧妮图鉴）不参与查询名
-      .replace(/^(?:xhh|小花火)[#%*]*/i, '')
-      .replace(/星铁|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3/gi, '')
+      .replace(/^(?:xhh|小花火)[#＃%％*＊※!！]*/i, '')
+      .replace(/星铁|星穹铁道|绝区零|ZZZ|崩坏3|崩坏三|崩三|BH3|原神/gi, '')
       .trim();
     name = name.startsWith('图鉴') ? name.replace(/^图鉴/, '') : name.replace(/图鉴$/, '');
     name = name.replace(/^[:：\s]+|[:：\s]+$/g, '').trim();
@@ -521,24 +531,13 @@ export class Wiki extends plugin {
       for (const { method, args } of checkTypes) {
         if (await this[method](...args, true)) return true;
       }
-    } else if (/^[＃#]/.test(cmd) && !starPrefix) {
-      // # 前缀 = 原神（用户约定 原神# 星铁* 绝区零%）：只查原神，不做其他游戏兜底
+    } else {
+      // 原神（# / ＃）：只查原神，不做其他游戏兜底
       for (const { method, args } of checkTypes) {
         if (await this[method](...args)) return true;
       }
       logger.mark(`[xhh][图鉴] ${name} 原神侧未命中（新条目请确认米游社图鉴已收录）`);
       return false;
-    } else {
-      for (const { method, args } of checkTypes) {
-        if (await this[method](...args)) return true;
-        if (await this[method](...args, true)) return true;
-      }
-      // 未写游戏前缀时，也兜底尝试绝区零，支持"安比图鉴 / 图鉴安比"这类写法。
-      for (const { method, args } of checkTypes) {
-        if (await this[method](...args, false, true)) return true;
-      }
-      if (await this.bangboo(e, name)) return true;
-      if (await this.bh3_yq(e, name, true)) return true;
     }
     // 最后查总列表。带游戏前缀（#/ * /%）的消息不做列表兜底：
     // 「#角色详情」这类通用词会把全角色列表图顶出来，直接静默放行。
@@ -547,8 +546,8 @@ export class Wiki extends plugin {
     }
     if (config().debug) logger.mark(`[xhh] 图鉴未命中: name=「${name}」 isSr=${isSr} isZZZ=${isZZZ} isBH3=${isBH3}`);
     // # 前缀已在上面静默放行。这里只提示没有游戏前缀、也不是列表词的未命中。
-    if (!/^[＃#*%]/.test(cmd) && name.length >= 2) {
-      await e.reply(`没有找到「${name}」的图鉴数据。\n可尝试指定游戏：绝区零${name}图鉴 / *${name}图鉴 / #${name}图鉴，或检查名称是否正确。`);
+    if (!/^[＃#＊*※％%！!]/.test(cmd) && name.length >= 2) {
+      await e.reply(`没有找到「${name}」的图鉴数据。\n可加游戏前缀重试：# 原神 / * 星铁 / % 绝区零 / ! 崩三，例如「*${name}图鉴」，或检查名称是否正确。`);
       return true;
     }
     return false;
