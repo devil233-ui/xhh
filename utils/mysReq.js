@@ -8,8 +8,9 @@
  */
 import { mysFetch } from '../../../lib/common/mys.js'
 
-// 米游社/米哈游系域名（含 hoyolab / hoyoverse 国际版）
-const MYS_HOST = /(^|\.)(miyoushe\.com|mihoyo\.com|hoyolab\.com|hoyoverse\.com)$/i
+// 只对国内米游社/米哈游系域名做节点优选；
+// hoyolab / hoyoverse 是境外服务，走直连（不参与国内 CDN 测速）
+const MYS_HOST = /(^|\.)(miyoushe\.com|mihoyo\.com)$/i
 
 export function isMysHost(url) {
   try {
