@@ -12,6 +12,8 @@ import {
     MysSign,
     zd_MysSign,
     BbsSign,
+    BbsAutoSign,
+    sendBbsAutoResult,
 } from "./sign.js";
 
 let isTrss = true
@@ -196,4 +198,6 @@ export {
     MysSign,
     zd_MysSign,
     BbsSign,
+    BbsAutoSign,
+    sendBbsAutoResult,
 };
