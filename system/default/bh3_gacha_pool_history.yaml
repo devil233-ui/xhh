@@ -1,5 +1,5 @@
 version: "1.0"
-updated: 2026-09-23
+updated: 2026-09-29
 source: 米游社官方公告+社区整理
 pools:
   - version: "9.1"
@@ -41,6 +41,22 @@ pools:
         end: 2026-11-06 12:00:00
         imgs:
           - https://upload-bbs.miyoushe.com/upload/2026/09/21/73565430/96d3e09f35623e4099f0cd0bdf002e5b_3955589193858714490.png
+      - name: 【补给】庆典装备补给丨晦夜麟光、澄爱挚语等装备限时UP
+        type: weapon
+        s: 镇×偃月叩晓
+        a: []
+        imgs:
+          - https://upload-bbs.miyoushe.com/upload/2026/09/28/73565430/1d894389bf3512c73de7e4ecba1c8b7d_4561011412889576727.png
+        start: 2026-10-01 12:00:00
+        end: 2026-10-22 12:00:00
+      - name: 【补给】庆典角色补给丨镇×偃月叩晓等目标限时UP
+        type: char
+        s: 镇×偃月叩晓
+        a: []
+        imgs:
+          - https://upload-bbs.miyoushe.com/upload/2026/09/28/73565430/f824bef729901e58cbde30a6222fc5aa_5535078192456554353.png
+        start: 2026-10-01 12:00:00
+        end: 2026-10-22 12:00:00
   - version: "9.0"
     start: 2026-07-23 12:00:00
     end: 2026-09-24 04:00:00

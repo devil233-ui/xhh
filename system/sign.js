@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import fs from 'fs';
+import md5 from 'md5';
 
 import {
     sleep,
@@ -12,11 +13,37 @@ import {
 import NoteUser from '../../genshin/model/mys/NoteUser.js';
 import { manualGeetest } from './manual_geetest.js';
 import { solveByLocalService } from '../utils/captchaVerify.js';
+import { scheduleGroupRecall } from './msgRecall.js';
+import Runtime from '../../../lib/plugins/runtime.js';
+
+// 手动验证码服务改由 xhh/index.js 在插件载入完成后统一启动。
+// 这里曾放在模块顶层，但 sign.js 会被 system/index.js 循环引用（config 尚未初始化），
+// 启动调用会抛 ReferenceError，导致服务实际没被拉起。
+
 
 
 function cookiePart(ck = '', key) {
     const m = String(ck).match(new RegExp(`(?:^|;\\s*)${key}=([^;]+)`));
     return m ? m[1] : '';
+}
+
+function parseCookie(ck = '') {
+    const map = {};
+    String(ck).split(';').forEach(pair => {
+        const idx = pair.indexOf('=');
+        if (idx <= 0) return;
+        const k = pair.slice(0, idx).trim();
+        const v = pair.slice(idx + 1).trim();
+        if (k) map[k] = v;
+    });
+    return map;
+}
+
+function buildCookie(map = {}) {
+    return Object.keys(map)
+        .filter(k => map[k] !== undefined && map[k] !== null && map[k] !== '')
+        .map(k => `${k}=${map[k]}`)
+        .join(';') + ';';
 }
 
 function getStokenEntry(qq, uid) {
@@ -48,7 +75,7 @@ async function hasXhhBh3Stoken(qq) {
     return Object.values(data).some(entry => entry?.stuid && entry?.stoken && isBh3Region(entry?.region));
 }
 
-async function getBh3SignTargets(e) {
+async function getBh3SignTargets(e, allAccounts = false) {
     const qq = e.user_id;
     const data = getStokenData(qq);
     const selectedUid = await redis.get(`xhh:bh3_uid:${qq}`);
@@ -64,23 +91,54 @@ async function getBh3SignTargets(e) {
     };
 
     if (selectedUid && data[selectedUid]) await add(selectedUid, data[selectedUid]);
-    for (const [uid, entry] of Object.entries(data)) await add(uid, entry);
+    if (allAccounts) {
+        for (const [uid, entry] of Object.entries(data)) await add(uid, entry);
+    } else if (!targets.length) {
+        const first = Object.entries(data).find(([, entry]) => entry?.stuid && entry?.stoken);
+        if (first) await add(first[0], first[1]);
+    }
     return targets;
 }
 
 async function ensureCookieToken(e, ck, entry = null) {
     if (!ck || /(?:^|;\s*)cookie_token=/.test(ck)) return ck;
-    const stuid = entry?.stuid || cookiePart(ck, 'stuid') || cookiePart(ck, 'ltuid');
-    const stoken = entry?.stoken || cookiePart(ck, 'stoken');
+    const map = parseCookie(ck);
+    const stuid = entry?.stuid || map.stuid || map.ltuid || map.account_id;
+    const stoken = entry?.stoken || map.stoken;
     if (!stuid || !stoken) return ck;
+    // 每个请求独立超时：之前两个接口共用一个 10s 计时器，第一个慢一点第二个就会被 abort
+    const requestJson = async url => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        try {
+            return await fetch(url, { method: 'GET', headers: mhy.getHeaders(e, ck), signal: controller.signal }).then(r => r.json());
+        } finally {
+            clearTimeout(timer);
+        }
+    };
     try {
-        const headers = mhy.getHeaders(e, ck);
-        const cookieRes = await fetch(`https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}`, { method: 'GET', headers }).then(r => r.json());
-        const ltokenRes = await fetch('https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken', { method: 'GET', headers }).then(r => r.json());
+        const cookieRes = await requestJson(`https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}`);
         const cookieToken = cookieRes?.data?.cookie_token;
-        const ltoken = ltokenRes?.data?.ltoken || entry?.ltoken;
-        if (cookieToken && ltoken) return `ltoken=${ltoken};ltuid=${stuid};cookie_token=${cookieToken};account_id=${stuid};`;
-        if (cookieToken) return `stuid=${stuid};stoken=${stoken};cookie_token=${cookieToken};account_id=${stuid};`;
+        // bbs-api 社区签到同时认 stoken 和 cookie_token：缺 stoken → 1034 无验证参数，缺 cookie_token → -100
+        if (cookieToken) {
+            let ltoken = entry?.ltoken || map.ltoken;
+            if (!ltoken) {
+                const ltokenRes = await requestJson('https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken');
+                ltoken = ltokenRes?.data?.ltoken || '';
+            }
+            if (config().debug) logger.mark(`[xhh][sign] ensureCookieToken retcode=${cookieRes?.retcode} cookieToken=${!!cookieToken} ltoken=${!!ltoken}`);
+            map.stuid = stuid;
+            map.stoken = stoken;
+            map.cookie_token = cookieToken;
+            map.account_id = map.account_id || stuid;
+            if (entry?.mid) map.mid = entry.mid;
+            if (ltoken) {
+                map.ltoken = ltoken;
+                map.ltuid = stuid;
+            }
+            return buildCookie(map);
+        }
+        if (config().debug) logger.mark(`[xhh][sign] ensureCookieToken 失败 retcode=${cookieRes?.retcode} msg=${cookieRes?.message}`);
     } catch (err) {
         if (config().debug) logger.mark(`[xhh][sign] refresh cookie_token failed: ${err.message}`);
     }
@@ -100,7 +158,31 @@ async function getSignCookieAndServer(e, game, uid, ck) {
     return { ck, server };
 }
 
-async function MysSign(e, games) {
+function getMysSignTargets(e, game, allAccounts = false) {
+    if (!allAccounts) {
+        const mys = e.user.getMysUser(game);
+        if (!mys) return [];
+        const ck = mys.ck;
+        const uids = Array.isArray(mys.uids?.[game]) ? mys.uids[game] : [];
+        return uids.map(uid => ({ uid, ck, server: null }));
+    }
+
+    const targets = [];
+    const seen = new Set();
+    for (const mys of Object.values(e.user.mysUsers || {})) {
+        if (!mys?.ck) continue;
+        const uids = Array.isArray(mys.uids?.[game]) ? mys.uids[game] : [];
+        for (const uid of uids) {
+            const key = `${mys.ltuid}:${uid}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            targets.push({ uid, ck: mys.ck, server: null });
+        }
+    }
+    return targets;
+}
+
+async function MysSign(e, games, allAccounts = false) {
     const hasBh3Xhh = games.includes('bh3') && await hasXhhBh3Stoken(e.user_id);
     if (
         !e.user.getMysUser() &&
@@ -116,14 +198,10 @@ async function MysSign(e, games) {
         const game_name = game == 'gs' ? '原神' : game == 'sr' ? '星铁' : game == 'zzz' ? '绝区零' : '崩坏3';
         let targets = [];
         if (game === 'bh3') {
-            targets = await getBh3SignTargets(e);
+            targets = await getBh3SignTargets(e, allAccounts);
         }
         if (!targets.length) {
-            const mys = e.user.getMysUser(game);
-            if (!mys) continue;
-            const ck = mys.ck;
-            const uids = Array.isArray(mys.uids?.[game]) ? mys.uids[game] : [];
-            targets = uids.map(uid => ({ uid, ck, server: null }));
+            targets = getMysSignTargets(e, game, allAccounts);
         }
         if (!targets.length) continue;
             for (let i = 0; i < targets.length; i++) {
@@ -238,7 +316,8 @@ async function MysSign(e, games) {
         }
     }
     const data_ = {
-        msgs,
+        // 模板统一用 title 显示首行（游戏签到是「原神uid：123456789」）
+        msgs: msgs.map(m => ({ title: `${m.game}uid：${m.uid}`, ...m })),
         qq: e.user_id,
         name: e.sender.card || e.sender.nickname,
     };
@@ -275,6 +354,19 @@ function isAllowSignGroup(signGroup, group) {
 }
 
 
+/* ============================================================
+ * 米游社社区签到
+ * 请求在本地完成；遇到验证码时只通过手动验证页面处理。
+ * ============================================================ */
+const BBS_API_HOST = 'https://bbs-api.miyoushe.com';
+const BBS_SIGN_PATH = '/apihub/app/api/signIn';
+const BBS_DS_SALT = 't0qEgfub6cvueAPgR5m9aQWWVciEer7v';
+const BBS_REQUEST_TIMEOUT = 20000;
+// 每日任务取帖用的板块：一个区够用，不必每个板块都刷一遍请求
+const TASK_FORUM_ID = '26';
+const NEED_READ = 5;
+const NEED_VOTE = 5;
+
 const BBS_FORUMS = [
     { name: '崩坏3', signId: '1', forumId: '1' },
     { name: '原神', signId: '2', forumId: '26' },
@@ -285,166 +377,490 @@ const BBS_FORUMS = [
     { name: '绝区零', signId: '8', forumId: '57' },
 ];
 
-function getBbsAccounts(e) {
-    const path = `./plugins/xhh/data/Stoken/${e.user_id}.yaml`;
-    const accounts = new Map();
-    if (fs.existsSync(path)) {
-        const data = yaml.get(path) || {};
-        for (const entry of Object.values(data)) {
-            if (!entry?.stuid || !entry?.stoken) continue;
-            if (accounts.has(String(entry.stuid))) continue;
-            const ck = entry.ck_stoken || `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}`;
-            accounts.set(String(entry.stuid), { stuid: String(entry.stuid), ck });
-        }
+/** 请求间随机停顿：限速 + 降风控 */
+function jitter(min = 600, max = 1200) {
+    return sleep(min + Math.floor(Math.random() * (max - min)));
+}
+
+function bbsDeviceId(account) {
+    return md5(`${account?.stuid || ''}:${account?.ck || ''}`).toUpperCase();
+}
+
+function bbsDs(query = '', body = '') {
+    const t = Math.floor(Date.now() / 1000);
+    const r = 100001 + Math.floor(Math.random() * 99999);
+    const raw = `salt=${BBS_DS_SALT}&t=${t}&r=${r}&b=${body}&q=${query}`;
+    return `${t},${r},${md5(raw)}`;
+}
+
+function bbsLocalHeaders(account, body = '', query = '') {
+    const deviceId = bbsDeviceId(account);
+    return {
+        'Content-Type': 'application/json;charset=UTF-8',
+        'x-rpc-app_version': '2.70.1',
+        'x-rpc-device_model': 'Mi 10',
+        'x-rpc-device_name': md5(account?.stuid || account?.ck || '').slice(0, 5),
+        'x-rpc-channel': 'miyousheluodi',
+        'x-rpc-client_type': '2',
+        'x-rpc-sys_version': '12',
+        'x-rpc-device_id': deviceId,
+        'User-Agent': 'okhttp/4.8.0',
+        Referer: 'https://app.mihoyo.com',
+        Cookie: account?.ck || '',
+        DS: bbsDs(query, body),
+    };
+}
+
+async function localBbsRequest(account, path, opt = {}) {
+    const method = opt.method || (opt.body ? 'POST' : 'GET');
+    const url = /^https?:\/\//.test(path) ? path : `${BBS_API_HOST}${path}`;
+    const query = url.includes('?') ? url.split('?')[1] : '';
+    const body = opt.body ? JSON.stringify(opt.body) : '';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), BBS_REQUEST_TIMEOUT);
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: {
+                ...bbsLocalHeaders(account, body, query),
+                ...(opt.headers || {}),
+            },
+            body: body || undefined,
+            signal: controller.signal,
+        });
+        const result = await response.json();
+        return result && typeof result === 'object'
+            ? result
+            : { retcode: -500, message: '米游社返回异常' };
+    } catch (err) {
+        return {
+            retcode: -500,
+            message: `本地请求失败:${err?.name === 'AbortError' ? '超时' : err?.message || '未知错误'}`,
+        };
+    } finally {
+        clearTimeout(timer);
     }
-    return [...accounts.values()];
 }
 
-function bbsBaseHeaders(e, ck, body = '', useBodyDs = false, deviceId = '') {
-    const headers = mhy.getHeaders(e, ck);
-    headers.Cookie = ck;
-    headers.DS = useBodyDs ? mhy.getDs2('', body, 't0qEgfub6cvueAPgR5m9aQWWVciEer7v') : mhy.getDs('S9Hrn38d2b55PamfIR9BNA3Tx9sQTOem');
-    headers['Content-Type'] = 'application/json';
-    headers['x-rpc-app_version'] = '2.70.1';
-    headers['x-rpc-client_type'] = '2';
-    headers['x-rpc-device_model'] = 'Mi 10';
-    headers['x-rpc-device_name'] = 'Mi 10';
-    headers['x-rpc-channel'] = 'miyousheluodi';
-    headers['x-rpc-sys_version'] = '12';
-    headers['x-rpc-device_id'] = deviceId || mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
-    headers.Referer = 'https://app.mihoyo.com';
-    headers['User-Agent'] = 'okhttp/4.8.0';
-    delete headers.Origin;
-    delete headers['X-Requested-With'];
-    return headers;
-}
-
-async function bbsJson(e, account, url, body = null, useBodyDs = false, extra = null) {
-    const bodyText = body ? JSON.stringify(body) : '';
-    const headers = bbsBaseHeaders(e, account.ck, bodyText, useBodyDs, extra?.deviceId);
-    // 过码后重发用：米游社颁的 challenge 要放在 x-rpc-challenge 里带回来
-    if (extra?.challenge) headers['x-rpc-challenge'] = extra.challenge;
-    return fetch(url, {
-        method: body ? 'POST' : 'GET',
-        headers,
-        body: body ? bodyText : undefined,
-    }).then(r => r.json());
-}
-
-// 社区接口撞码判定（同 TL signClient）：回执带 challenge/gt，或风控码
-const isBbsCaptcha = res => !!(res?.data?.challenge || res?.data?.gt
-    || [1034, 5003, 10035, 10041].includes(Number(res?.retcode)));
-const BBS_CAPTCHA_GAPS = [0, 6000, 15000];
-
-async function bbsForumTasks(e, account, forum) {
-    const listUrl = `https://bbs-api.miyoushe.com/post/api/getForumPostList?forum_id=${forum.forumId}&is_good=false&is_hot=false&page_size=20&sort_type=1`;
-    const listRes = await bbsJson(e, account, listUrl);
-    const posts = (listRes?.data?.list || []).map(v => v.post).filter(v => v?.post_id);
-    if (!posts.length) return '浏览0 点赞0 分享0';
-    let browse = 0, vote = 0, share = 0;
-    for (const post of posts.slice(0, 3)) {
-        const res = await bbsJson(e, account, `https://bbs-api.miyoushe.com/post/api/getPostFull?post_id=${post.post_id}`);
-        if (res?.retcode === 0) browse++;
-        await sleep(200);
-    }
-    for (const post of posts.slice(0, 5)) {
-        const res = await bbsJson(e, account, 'https://bbs-api.miyoushe.com/post/api/post/upvote', { post_id: post.post_id, is_cancel: false });
-        if (res?.retcode === 0) vote++;
-        if (res?.retcode === -300) break;
-        await sleep(200);
-    }
-    const shareRes = await bbsJson(e, account, `https://bbs-api.miyoushe.com/apihub/api/getShareConf?entity_id=${posts[0].post_id}&entity_type=1`);
-    if (shareRes?.retcode === 0) share++;
-    return `浏览${browse} 点赞${vote} 分享${share}`;
-}
-
-async function bbsForumSign(e, account, forum) {
-    // 社区签到是 App 端 POST 接口：device_id 全程同一套（过码与重发同身份），
-    // 撞码时走本地过码（App 端形态 clientType=2），拿到米游社颁的 challenge
-    // 当 x-rpc-challenge 头按梯度重发 —— 光「清风险」对 POST 类不管用（TL 米游币实测）。
-    const signInUrl = 'https://bbs-api.miyoushe.com/apihub/app/api/signIn';
-    const deviceId = mhy.getDeviceGuid().replace(/-/g, '').toUpperCase();
-    let signRes = await bbsJson(e, account, signInUrl, { gids: forum.signId }, true, { deviceId });
+async function solveBbsCaptchaManually(e, account, forum, original) {
+    // 先用本地过码服务（App 端形态 + 米游社回执 challenge 重发）；
+    // 没配或没成功再退回手动验证。POST 类接口光「清风险」不放行，必须带 challenge。
     const autoAddr = config().auto_verify_addr;
-    if (isBbsCaptcha(signRes) && autoAddr) {
+    if (autoAddr) {
         const vc = { challenge: '' };
         const passed = await solveByLocalService({
             cookie: account.ck,
             autoVerifyAddr: autoAddr,
             clientType: '2',
-            deviceId,
+            deviceId: bbsDeviceId(account),
             challengeOut: vc,
         }).catch(() => false);
         if (passed) {
-            for (const gap of BBS_CAPTCHA_GAPS) {
-                if (gap) await sleep(gap);
-                signRes = await bbsJson(e, account, signInUrl, { gids: forum.signId }, true, { deviceId, challenge: vc.challenge });
-                if (!isBbsCaptcha(signRes)) break;
-                logger.mark(`[xhh][bbs_sign] ${forum.name} 过码后重签仍被拦 retcode=${signRes?.retcode}`);
+            const retry = await bbsApi(account, BBS_SIGN_PATH, {
+                method: 'POST',
+                body: { gids: Number(forum.signId) },
+                headers: vc.challenge ? { 'x-rpc-challenge': vc.challenge } : {},
+            });
+            if (![1034, 10035].includes(Number(retry?.retcode))) {
+                logger.mark('[xhh][bbs] 社区验证码由本地过码服务自动通过');
+                return retry;
             }
+            logger.mark(`[xhh][bbs] 本地过码后重签仍被拦 retcode=${retry?.retcode}，转手动验证`);
         }
     }
-    let signTip;
-    if (signRes?.retcode === 0) signTip = '签到成功';
-    else if (signRes?.retcode === 1008 || /已经|已签到|重复/.test(signRes?.message || '')) signTip = '今日已签';
-    else if (signRes?.retcode === 1034) return '遇到验证码';
-    else if (signRes?.retcode === -100) return '登录失效';
-    else signTip = signRes?.message || `失败(${signRes?.retcode ?? '无返回'})`;
-    let taskTip = '';
     try {
-        taskTip = await bbsForumTasks(e, account, forum);
+        const create = await localBbsRequest(account, '/misc/wapi/createVerification?gids=2&is_high=false', {
+            method: 'GET',
+            headers: { DS: mhy.getDs() },
+        });
+        if (Number(create?.retcode) !== 0 || !create?.data?.gt || !create?.data?.challenge) return original;
+        const validated = await manualGeetest(
+            e,
+            { ...create.data, uid: account.stuid || '' },
+            `${forum.name}社区签到`,
+        );
+        if (!validated?.validate) return original;
+        const verified = await localBbsRequest(account, '/misc/wapi/verifyVerification', {
+            method: 'POST',
+            body: {
+                geetest_challenge: validated.challenge || create.data.challenge,
+                geetest_validate: validated.validate,
+                geetest_seccode: validated.seccode || `${validated.validate}|jordan`,
+            },
+            headers: { DS: mhy.getDs() },
+        });
+        if (Number(verified?.retcode) !== 0 || !verified?.data?.challenge) return original;
+        logger.mark('[xhh][bbs] 社区验证码手动验证成功');
+        return bbsApi(account, BBS_SIGN_PATH, {
+            method: 'POST',
+            body: { gids: Number(forum.signId) },
+            headers: { 'x-rpc-challenge': verified.data.challenge },
+        });
     } catch (err) {
-        if (config().debug) logger.mark(`[xhh][bbs_task] ${forum.name}: ${err.message}`);
+        logger.warn(`[xhh][bbs] 社区验证码处理失败: ${err.message}`);
+        return original;
     }
-    return taskTip ? `${signTip} ${taskTip}` : signTip;
 }
 
-async function BbsAllSign(e) {
-    const accounts = getBbsAccounts(e);
-    if (!accounts.length) return e.reply('未找到米游社SToken，请先扫码绑定', true);
-    const lines = ['米游社社区全部签到'];
-    for (const account of accounts) {
-        lines.push(`\n通行证 ${account.stuid}`);
-        for (const forum of BBS_FORUMS) {
-            let tip = '签到异常';
-            try {
-                tip = await bbsForumSign(e, account, forum);
-            } catch (err) {
-                logger.error(`[xhh][bbs_sign] ${account.stuid} ${forum.name}: ${err.message}`);
-            }
-            lines.push(`${forum.name}：${tip}`);
-            await sleep(500);
+/**
+ * 单个社区接口调用。
+ * -500 是本地网络层错误；米游社业务码原样返回由调用方判定。
+ */
+async function bbsApi(account, path, opt = {}) {
+    const method = opt.method || (opt.body ? 'POST' : 'GET');
+    const localRes = await localBbsRequest(account, path, opt);
+    const localCode = Number(localRes?.retcode);
+    if (config().debug) {
+        logger.mark(`[xhh][bbs] local ${method} ${path} => ${localRes?.retcode} ${String(localRes?.message || '').slice(0, 60)}`);
+    }
+
+    return localRes;
+}
+
+/** 把米游社回包翻译成给用户看的提示 */
+function bbsResultTip(res) {
+    const rc = Number(res?.retcode);
+    if (rc === 0) return '签到成功';
+    if ([-5003, 1008].includes(rc) || /已经|已签到|重复/.test(String(res?.message || ''))) return '今日已签';
+    if (rc === -500) return '社区请求失败';
+    if ([-100, -101, 10001].includes(rc)) return '登录失效,请重新[扫码绑定]';
+    if ([1034, 10035, 10041].includes(rc)) return '遇到验证码';
+    if (rc === -10001) return '请求被拒(签名)';
+    return String(res?.message || `失败(${res?.retcode ?? '无返回'})`).slice(0, 30);
+}
+
+function getBbsAccounts(e) {
+    const path = `./plugins/xhh/data/Stoken/${e.user_id}.yaml`;
+    const accounts = new Map();
+    const collect = data => {
+        for (const entry of Object.values(data || {})) {
+            if (!entry?.stuid || !entry?.stoken) continue;
+            if (accounts.has(String(entry.stuid))) continue;
+            accounts.set(String(entry.stuid), {
+                stuid: String(entry.stuid),
+                stoken: entry.stoken,
+                ck: entry.ck_stoken || `stuid=${entry.stuid};stoken=${entry.stoken};${entry.mid ? `mid=${entry.mid};` : ''}`,
+            });
+        }
+    };
+    if (fs.existsSync(path)) {
+        try { collect(yaml.get(path)); } catch (_) {}
+    }
+    // 没有扫码记录时退回当前绑定的 ck；社区签到只认 stoken，没 stoken 的直接不算
+    if (!accounts.size) {
+        const mys = e.user?.getMysUser?.('gs');
+        if (mys?.ck && /stoken=/.test(mys.ck)) {
+            accounts.set('0', {
+                stuid: '',
+                stoken: cookiePart(mys.ck, 'stoken'),
+                ck: mys.ck,
+            });
         }
     }
-    return e.reply(lines.join('\n'), true);
+    return [...accounts.values()];
+}
+
+// 当日签到缓存：签过就别再打接口了，重复请求只会被记风控
+function bbsCacheKey(e, account) {
+    const d = new Date();
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `xhh:bbs_sign:${day}:${e.user_id}:${account.stuid || '0'}`;
+}
+
+async function bbsSignedToday(e, account) {
+    try {
+        return !!(await redis.get(bbsCacheKey(e, account)));
+    } catch (_) {
+        return false;
+    }
+}
+
+async function markBbsSigned(e, account) {
+    try {
+        await redis.set(bbsCacheKey(e, account), '1', { EX: getSecondsToMidnight() });
+    } catch (_) {}
+}
+
+/**
+ * 单个板块签到
+ * ck 里只有 stoken 时社区接口可能判未登录/要验证码，补一次 cookie_token 后重试一轮（每轮只补一次）
+ */
+async function bbsForumSignIn(e, account, forum, ctx = {}) {
+    const body = { gids: Number(forum.signId) };
+    let res = await bbsApi(account, BBS_SIGN_PATH, { method: 'POST', body });
+    if ([1034, 10035].includes(Number(res?.retcode))) {
+        ctx.captchaTried ||= {};
+        const key = String(forum.signId);
+        if (!ctx.captchaTried[key]) {
+            ctx.captchaTried[key] = true;
+            res = await solveBbsCaptchaManually(e, account, forum, res);
+        }
+    }
+    const needCookieToken = [-100, -101, 10001, 1034, 10035].includes(Number(res?.retcode));
+    if (needCookieToken && !/(?:^|;\s*)cookie_token=/.test(account.ck || '') && !ctx.refreshed) {
+        ctx.refreshed = true;
+        ctx.account = { ...account, ck: await ensureCookieToken(e, account.ck, account) };
+        if (ctx.account.ck !== account.ck) {
+            await jitter(800, 1500);
+            res = await bbsApi(ctx.account, BBS_SIGN_PATH, { method: 'POST', body });
+        }
+    }
+    return res;
+}
+
+/** 米游币每日任务：整号只跑一轮浏览/点赞/分享，没必要每个板块重复刷 */
+async function bbsDailyTasks(account) {
+    const listRes = await bbsApi(account, `/post/api/getForumPostList?forum_id=${TASK_FORUM_ID}&is_good=false&is_hot=false&page_size=20&sort_type=1`);
+    const postIds = (listRes?.data?.list || []).map(v => v?.post?.post_id).filter(Boolean);
+    if (!postIds.length) return '';
+    await jitter();
+    let browse = 0, vote = 0, share = 0;
+    for (const postId of postIds.slice(0, NEED_READ)) {
+        const res = await bbsApi(account, `/post/api/getPostFull?post_id=${postId}`);
+        if (Number(res?.retcode) === 0) browse++;
+        await jitter(500, 1000);
+    }
+    for (const postId of postIds.slice(0, NEED_VOTE)) {
+        const res = await bbsApi(account, '/apihub/sapi/upvotePost', {
+            method: 'POST',
+            body: { post_id: String(postId), is_cancel: false },
+        });
+        if (Number(res?.retcode) === 0) vote++;
+        if ([1034, 10035].includes(Number(res?.retcode))) break;
+        await jitter(500, 1000);
+    }
+    const shareRes = await bbsApi(account, `/apihub/api/getShareConf?entity_id=${postIds[0]}&entity_type=1`);
+    if (Number(shareRes?.retcode) === 0) share++;
+    return `浏览${browse} 点赞${vote} 分享${share}`;
+}
+
+/**
+ * 单个通行证：先查任务态（米游币已拿满就跳过），再逐板块签到，最后补每日任务
+ * rows 用于出图，lines 用于文本兜底
+ */
+async function bbsSignAccount(e, account, lines) {
+    const rows = [];
+    const fill = tip => {
+        for (const forum of BBS_FORUMS) rows.push({ name: forum.name, tip });
+    };
+    if (await bbsSignedToday(e, account)) {
+        fill('今日已签');
+        for (const forum of BBS_FORUMS) lines.push(`${forum.name}：今日已签`);
+        return { rows, ok: true };
+    }
+    let cur = account;
+    const stateRes = await bbsApi(cur, '/apihub/sapi/getUserMissionsState');
+    const skipDailyTasks = Number(stateRes?.retcode) === 0 && Number(stateRes.data?.can_get_points) === 0;
+    if (skipDailyTasks) lines.push('今日米游币已拿满');
+    const ctx = {};
+    for (const forum of BBS_FORUMS) {
+        let res;
+        try {
+            res = await bbsForumSignIn(e, cur, forum, ctx);
+        } catch (err) {
+            logger.error(`[xhh][bbs_sign] ${account.stuid || ''} ${forum.name}: ${err.message}`);
+            res = { retcode: -500, message: '签到异常' };
+        }
+        if (ctx.account) cur = ctx.account;
+        const tip = bbsResultTip(res);
+        rows.push({ name: forum.name, tip });
+        lines.push(`${forum.name}：${tip}`);
+        // ck 失效：剩下的板块结果只会一样，别再打一遍浪费请求
+        if (/登录失效/.test(tip)) {
+            const rest = BBS_FORUMS.slice(rows.length);
+            for (const f of rest) rows.push({ name: f.name, tip });
+            break;
+        }
+        await jitter(800, 1600);
+    }
+    const ok = rows.length > 0 && rows.every(r => /签到成功|今日已签/.test(r.tip));
+    if (ok) {
+        try {
+            if (!skipDailyTasks) {
+                const taskTip = await bbsDailyTasks(cur);
+                if (taskTip) lines.push(`每日任务：${taskTip}`);
+            }
+        } catch (err) {
+            logger.error(`[xhh][bbs_task] ${account.stuid || ''}: ${err.message}`);
+        }
+        await markBbsSigned(e, account);
+    }
+    return { rows, ok };
 }
 
 async function BbsSign(e) {
-    if (/全部/.test(e.msg || '')) return BbsAllSign(e);
-    const mys = e.user.getMysUser('gs');
-    if (!mys) return e.reply('未绑定米游社,请发送[扫码绑定]', true);
-    const ck = mys.ck;
-    let headers = mhy.getHeaders(e, ck);
-    headers.DS = mhy.getDsSign();
-    headers.Origin = 'https://act.mihoyo.com';
-    headers.Referer = 'https://act.mihoyo.com';
-
-    const data = { headers, type: 'bbs_sign_info' };
-    let res = await api(e, data);
-    if (typeof res == 'string') return e.reply(`社区签到失败：${res}`, true);
-    if (res?.retcode !== 0) return e.reply('社区签到查询失败', true);
-
-    const info = res.data || {};
-    if (info.is_sign) {
-        return e.reply(`✅ 今日已签到米游社社区\n连续签到 ${info.total_sign_day || 0} 天`, true);
+    const accounts = getBbsAccounts(e);
+    if (!accounts.length) {
+        return e.reply('未找到米游社SToken(社区签到只认stoken)，请先[小花火扫码登录]绑定', true, { recallMsg: 60 });
     }
-
-    data.type = 'bbs_sign';
-    const signRes = await api(e, data);
-    if (signRes?.retcode === 0) {
-        return e.reply(`✅ 社区签到成功！\n连续签到 ${(info.total_sign_day || 0) + 1} 天`, true);
+    const all = /全部/.test(e.msg || '');
+    const lines = [all ? '米游社社区全部签到' : '米游社社区签到'];
+    const msgs = [];
+    for (const account of accounts) {
+        const label = account.stuid || '当前绑定';
+        lines.push(`\n通行证 ${label}`);
+        try {
+            const { rows } = await bbsSignAccount(e, account, lines);
+            msgs.push(bbsCardItem(account, rows));
+        } catch (err) {
+            logger.error(`[xhh][bbs_sign] ${label}: ${err.message}`);
+            lines.push(`签到异常：${err.message}`);
+            msgs.push({ title: `通行证 ${label}`, tip: '签到异常' });
+        }
+        await jitter(1000, 2000);
     }
-    return e.reply('❌ 社区签到失败，请稍后重试', true);
+    return replyBbsResultImage(e, msgs, lines);
+}
+
+async function bbsSignForUser(qq) {
+    const e = {
+        user_id: String(qq),
+        msg: '社区签到',
+        isGroup: false,
+        sender: { nickname: String(qq) },
+        reply: async () => false,
+    };
+    const accounts = getBbsAccounts(e);
+    const lines = [`QQ ${qq}`];
+    const msgs = [];
+    if (!accounts.length) {
+        lines.push('未找到米游社SToken');
+        return { msgs, lines };
+    }
+    for (const account of accounts) {
+        const label = account.stuid || '当前绑定';
+        lines.push(`\n通行证 ${label}`);
+        try {
+            const { rows } = await bbsSignAccount(e, account, lines);
+            msgs.push(bbsCardItem(account, rows));
+        } catch (err) {
+            logger.error(`[xhh][bbs_auto] ${qq} ${label}: ${err.message}`);
+            lines.push(`签到异常：${err.message}`);
+            msgs.push({ title: `通行证 ${label}`, tip: '签到异常' });
+        }
+        await jitter(1000, 2000);
+    }
+    return { msgs, lines };
+}
+
+async function BbsAutoSign(qqs = []) {
+    const users = [...new Set((qqs || []).map(v => String(v).trim()).filter(Boolean))];
+    const allLines = ['米游社社区自动签到'];
+    const allMsgs = [];
+    for (const qq of users) {
+        const result = await bbsSignForUser(qq);
+        allLines.push(...result.lines);
+        allMsgs.push(...result.msgs.map(m => ({ ...m, title: `QQ ${qq} · ${m.title}` })));
+        await jitter(1500, 3000);
+    }
+    return { msgs: allMsgs, lines: allLines };
+}
+
+// 定时任务里没有 e，只能主动 sendMsg，而 e.reply 的 recallMsg 选项在这里用不上，
+// 所以自己拿 message_id 定时撤回（社区自动签到每天每群一条，不撤会一直刷屏）。
+const BBS_AUTO_RECALL_SEC = 60;
+
+async function sendBbsAutoResult(group, result) {
+    const text = (result?.lines || []).join('\n') || '米游社社区自动签到完成';
+    const target = Bot.pickGroup(Number(group));
+    let sent;
+    try {
+        const renderEvent = {
+            runtime: new Runtime(),
+            user_id: String(group),
+            sender: { nickname: target?.info?.group_name || target?.group_name || '小花火' },
+        };
+        const image = await render('sign/sign', {
+            msgs: result?.msgs || [],
+            qq: String(group),
+            name: target?.info?.group_name || target?.group_name || '小花火',
+            // 社区签到用小花火立绘头像（sender 是群名占位，QQ 头像与签到者无关）；游戏签到不传此字段
+            xhhAvatar: true,
+            saveId: `bbs_auto_${group}`,
+        }, { e: renderEvent, ret: false });
+        if (image) {
+            sent = await target.sendMsg(image);
+            scheduleGroupRecall(group, sent, BBS_AUTO_RECALL_SEC);
+            return sent;
+        }
+    } catch (err) {
+        logger.error(`[xhh][bbs_auto] 图片发送失败，回退文本: ${err.message}`);
+    }
+    sent = await target.sendMsg(text);
+    scheduleGroupRecall(group, sent, BBS_AUTO_RECALL_SEC);
+    return sent;
+}
+
+// 结果汇总：全失败时给出可操作的排查提示，不再 60s 就把消息撤掉
+function bbsResultTips(lines) {
+    const body = lines.slice(1);
+    const tips = [];
+    if (body.some(l => /遇到验证码/.test(l))) {
+        tips.push('提示：米游社返回了验证码，社区签到暂时无法自动完成，请稍后重试或在米游社客户端完成一次验证');
+    }
+    if (body.some(l => /登录失效/.test(l))) {
+        tips.push('提示：ck 已失效，重新[扫码绑定]后再试');
+    }
+    if (body.some(l => /社区请求失败/.test(l))) {
+        tips.push('提示：社区接口请求失败，请检查网络后重试');
+    }
+    if (body.some(l => /请求被拒/.test(l))) {
+        tips.push('提示：请求被米游社拒绝(签名/版本)，稍后再试或反馈开发者');
+    }
+    return tips;
+}
+
+function replyBbsResult(e, lines) {
+    const ok = lines.slice(1).some(l => /签到成功|今日已签/.test(l));
+    if (!ok) lines = lines.concat(bbsResultTips(lines));
+    return e.reply(lines.join('\n'), false, ok ? {} : { recallMsg: 300 });
+}
+
+// 一个通行证出一张卡：正常时只写「今日已签 / 签到成功」，有异常才点名是哪个版块
+function bbsCardItem(account, rows) {
+    const stuid = account.stuid || '当前绑定';
+    const failed = rows.filter(r => !/签到成功|今日已签/.test(r.tip));
+    let tip;
+    if (!failed.length) {
+        tip = rows.every(r => /今日已签/.test(r.tip)) ? '今日已签' : '签到成功';
+    } else {
+        const okCount = rows.length - failed.length;
+        tip = `${okCount}/${rows.length} 完成 · ${failed.map(r => `${r.name}${r.tip}`).join(' ')}`;
+    }
+    return {
+        title: `通行证 ${stuid}`,
+        tip,
+    };
+}
+
+// 结果出图；渲染失败回退文本，保证不影响签到本身
+async function replyBbsResultImage(e, msgs, lines) {
+    const ok = msgs.some(m => /签到成功|今日已签/.test(m.tip));
+    try {
+        // ret:true 时图片由 runtime 直接发出（与 wiki/签到等其它功能一致），
+        // 返回值只是「发送结果」而不是图片内容——不要再 e.reply 一次，否则会多发一条客户端看不懂的消息
+        const sent = await render('sign/sign', {
+            msgs,
+            qq: e.user_id,
+            name: e.sender?.card || e.sender?.nickname || String(e.user_id),
+            // 社区签到用小花火立绘头像；游戏签到不传此字段，模板回退到 QQ 头像
+            xhhAvatar: true,
+            // 与游戏签到共用 sign/sign.html，这里单独给个 saveId，免得命中它的渲染缓存
+            saveId: 'bbs_sign',
+        }, { e, ret: true });
+        if (config().debug) logger.mark(`[xhh][bbs] 出图发送结果: ${JSON.stringify(sent ?? null).slice(0, 120)}`);
+        // render 只在截图/渲染失败时给 false，否则已经发出去了
+        if (sent !== false) {
+            if (!ok) {
+                const tips = bbsResultTips(lines);
+                if (tips.length) await e.reply(tips.join('\n'), false, { recallMsg: 300 });
+            }
+            return true;
+        }
+    } catch (err) {
+        logger.error(`[xhh][bbs_sign] 结果渲染失败，回退文本: ${err.message}`);
+    }
+    return replyBbsResult(e, lines);
 }
 
 async function reward(e, data) {
@@ -580,4 +996,6 @@ export {
     MysSign,
     zd_MysSign,
     BbsSign,
+    BbsAutoSign,
+    sendBbsAutoResult,
 };
