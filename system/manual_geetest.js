@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import http from 'node:http';
 import { URL } from 'node:url';
 import crypto from 'node:crypto';
@@ -73,6 +74,10 @@ function getManualCfg() {
     publicUrl: (isTempDomain && liveTunnel) || configured,
     path: String(cfg.manual_gt_path || '/xhh-gt').replace(/\/+$/, ''),
     timeout: Number(cfg.manual_gt_timeout || 120),
+    // 远程手动过码服务（与 ji-plugin 的 api.yaml verifyAddr 同一套协议）：
+    // POST {gt, challenge} → {data:{link, result}}，把 link 给用户，轮询 result 拿 geetest_validate。
+    // 配了它就不需要本机服务与 cloudflared 隧道。
+    remoteAddr: String(cfg.manual_gt_remote_addr || '').trim(),
     autoTunnel: cfg.manual_gt_auto_tunnel !== false,
     // 自动签到/社区签到是定时任务，e.reply 被写成空壳（async () => false），
     // 验证码链接必须主动发到群里，否则用户根本不知道要去过码，任务只能干等到超时重试。
@@ -431,7 +436,10 @@ async function notifyCaptcha(e, cfg, text) {
 
 export async function manualGeetest(e, data = {}, title = '米游社签到') {
   const cfg = getManualCfg();
-  if (!cfg.enable || !data.gt || !data.challenge) return false;
+  if (!data.gt || !data.challenge) return false;
+  // 配了远程过码服务就走远程：不需要本机监听、也不需要公网隧道
+  if (cfg.remoteAddr) return await remoteManualGeetest(e, cfg, data, title);
+  if (!cfg.enable) return false;
   if (!ensureServer()) return false;
   const publicUrl = await waitForPublicUrl(cfg);
   if (cfg.autoTunnel && !publicUrl && !cfg.publicUrl) {
@@ -457,6 +465,56 @@ export async function manualGeetest(e, data = {}, title = '米游社签到') {
     await sleep(2000);
   }
   cleanup(key);
+  return false;
+}
+
+/**
+ * 远程手动过码（协议同 ji-plugin 的 verifyAddr）：
+ * POST {gt, challenge} → 返回 {data:{link, result}}；link 给用户手划，轮询 result 取 validate。
+ */
+async function remoteManualGeetest(e, cfg, data, title) {
+  let res;
+  try {
+    res = await mysReq(cfg.remoteAddr, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gt: data.gt, challenge: data.challenge }),
+    }).then(r => r.json());
+  } catch (err) {
+    logger.error(`[xhh][manual_gt] 远程过码服务请求失败: ${err?.message || err}`);
+    return false;
+  }
+  const link = res?.data?.link;
+  const resultUrl = res?.data?.result;
+  if (!link || !resultUrl) {
+    logger.error(`[xhh][manual_gt] 远程过码服务返回异常: ${JSON.stringify(res).slice(0, 160)}`);
+    return false;
+  }
+  await notifyCaptcha(e, cfg, `${title}遇到验证码，请打开地址并完成验证：\n${link}\n验证有效期 ${cfg.timeout} 秒，完成后小花火会自动重试。`);
+  // 该服务的 result 端点是「长轮询」：连接会挂到用户完成验证或服务端超时为止。
+  // 所以每轮请求都要带上剩余时间的上限，返回了没结果（短轮询形态）就歇一下再问。
+  const deadline = Date.now() + Math.max(10, Number(cfg.timeout || 120)) * 1000;
+  let round = 0;
+  while (Date.now() < deadline) {
+    round += 1;
+    let v;
+    try {
+      v = await mysReq(resultUrl, { signal: AbortSignal.timeout(Math.max(3000, deadline - Date.now())) }).then(r => r.json());
+    } catch (_) {
+      v = null;
+    }
+    if (v?.data?.geetest_validate) {
+      logger.mark(`[xhh][manual_gt] 远程过码完成（第 ${round} 轮轮询）`);
+      return {
+        gt: data.gt,
+        challenge: v.data.geetest_challenge || data.challenge,
+        validate: v.data.geetest_validate,
+        seccode: v.data.geetest_seccode || `${v.data.geetest_validate}|jordan`,
+      };
+    }
+    await sleep(1500);
+  }
+  logger.warn(`[xhh][manual_gt] 远程过码等待超时（${cfg.timeout}s）`);
   return false;
 }
 

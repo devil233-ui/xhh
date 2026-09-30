@@ -301,3 +301,4 @@ Verification_API_KEY: ''
 sr_strategy: false
 sr_strategy_priority: -99
 auto_verify_addr: ''
+manual_gt_remote_addr: ''
