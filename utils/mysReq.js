@@ -44,10 +44,41 @@ function wrapResponse(res) {
   }
 }
 
+/** 从入参里取主机名（URL 字符串 / URL 对象都支持） */
+function hostOf(input) {
+  try {
+    return new URL(typeof input === 'string' ? input : String(input?.url || input)).hostname
+  } catch (_) {
+    return ''
+  }
+}
+
+// 失败记忆：同一域名刚失败过时，短时间内的后续请求用更短的超时/更少的节点，
+// 避免每个请求都等满 8s×N 才失败（图鉴一次查询会连打好几个接口，曾把一条指令拖到 4 分钟）。
+const FAIL_TTL = 3 * 60 * 1000
+const failedAt = new Map()
+
 /** 与 fetch 同签名：米游社域名走 mysFetch，其余走全局 fetch */
 export async function mysReq(input, options = {}) {
   if (!isMysHost(input)) return fetch(input, options)
-  return wrapResponse(await mysFetch(input, options))
+  const host = hostOf(input)
+  const cooling = host && failedAt.has(host) && Date.now() - failedAt.get(host) < FAIL_TTL
+  try {
+    const res = await wrapResponse(await mysFetch(input, cooling ? { timeout: 4000, retry: 1, ...options } : options))
+    if (host) failedAt.delete(host)
+    return res
+  } catch (err) {
+    if (host) failedAt.set(host, Date.now())
+    // 兜底：mysFetch 靠 TCP 测速挑节点，偶有误判（节点握手通但请求挂死）；
+    // 再用全局 fetch 试一次（走系统解析 + happy-eyeballs），成功就不报错。
+    try {
+      const res = await fetch(input, options)
+      if (host) failedAt.delete(host)
+      return res
+    } catch (_) {
+      throw err // 仍失败则抛 mysFetch 的原始错误，保留节点明细便于排查
+    }
+  }
 }
 
 export default mysReq
