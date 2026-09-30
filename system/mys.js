@@ -434,6 +434,9 @@ const makeExt = (strings, icon) => {
 
 
 const BH3_WIKI_BASE = 'https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki';
+// 米游社官方图鉴列表缓存（10 分钟）：仅作 nanoka 查不到时的兜底数据源
+const MYS_OFFICIAL_TTL = 10 * 60 * 1000;
+const mysOfficialTujianCache = new Map();
 const BH3_APP_SN = 'bh3_wiki';
 
 const BH3_CHANNEL_MAP = {
@@ -708,6 +711,38 @@ class mys {
 
     // 原神/星铁官方 Wiki 列表（nanoka 失效时的兜底）
     async official_tujian(isSr = false) {
+        // 这份列表是「nanoka 查不到时」的兜底数据源，一次 60KB 左右；
+        // 加个短缓存，避免批量查询时反复拉取。
+        const cacheKey = isSr ? 'sr' : 'gs';
+        const cached = mysOfficialTujianCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < MYS_OFFICIAL_TTL) return cached.data;
+        const data = await this._fetchOfficialTujian(isSr);
+        if (data) mysOfficialTujianCache.set(cacheKey, { at: Date.now(), data });
+        return data;
+    }
+
+    /** 米游社官方图鉴按名字匹配（nanoka 列表滞后时的兜底；type: js/wq/syw/gz/yq） */
+    async officialFindByName(name = '', type = 'js', isSr = false) {
+        if (!name) return false;
+        const key = { js: 'js_list', wq: 'wq_list', gz: 'gz_list', syw: 'syw_list', yq: 'yq_list' }[type] || 'js_list';
+        let data;
+        try {
+            data = await this.official_tujian(isSr);
+        } catch (_) {
+            return false;
+        }
+        const list = data?.[key] || [];
+        const cleanKey = v => String(v || '').replace(/[^\u4e00-\u9fa5a-z0-9]/gi, '').toLowerCase();
+        const target = cleanKey(name);
+        if (!target) return false;
+        let hit = list.find(v => cleanKey(v.title) === target);
+        // 包含匹配要求至少 2 个字，避免单字查询命中一堆无关条目
+        if (!hit && target.length >= 2) hit = list.find(v => cleanKey(v.title).includes(target));
+        // 同时回传整条列表条目：圣遗物/遗器出图直接用条目里的 ext，不需要详情接口
+        return hit ? { id: hit.content_id, title: hit.title, item: hit } : false;
+    }
+
+    async _fetchOfficialTujian(isSr = false) {
         let url =
             'https://api-takumi-static.mihoyo.com/common/blackboard/ys_obc/v1/home/content/list?app_sn=ys_obc&channel_id=189';
         if (isSr)
@@ -1129,12 +1164,17 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
                 list = data.gz_list;
                 break;
             case 'syw':
-                list = data.syw_list;
+            case 'yq': {
+                // nanoka 的 syw_list/yq_list 实际是物品列表（原石/摩拉…），不是圣遗物/遗器套装，
+                // 套装（列表与按名查询）一律以米游社官方列表为准；官方不可用时退回原列表。
+                // 官方详情接口免鉴权返回空内容，但列表条目自带 ext（套装效果表），出图与列表都够用。
+                const officialList = (await this.official_tujian(isSr))?.[type === 'syw' ? 'syw_list' : 'yq_list'];
+                list = officialList?.length ? officialList : (type === 'syw' ? data.syw_list : data.yq_list);
                 if (name) return list;
                 break;
-            case 'yq':
-                list = data.yq_list;
-                if (name) return list;
+            }
+            default:
+                break;
         }
         let text;
         if (name) {

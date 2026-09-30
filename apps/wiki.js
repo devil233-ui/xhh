@@ -1307,14 +1307,31 @@ export class Wiki extends plugin {
         name = atlas;
         sywHit = true;
       }
+      // 本地表与 Atlas 都没命中时先别放弃：米游社官方列表里可能有（新套装）。
+      // 注意 nanoka 的 gs syw_list 实际是物品列表（原石/摩拉…），圣遗物套装只有官方列表有，
+      // 所以命中本地表的情况下面还要在官方列表里再核对一次。
+      if (!sywHit) {
+        const found = await mys.officialFindByName(name, isSr ? 'yq' : 'syw', isSr);
+        if (found?.item) {
+          name = found.title;
+          sywHit = true;
+        }
+      }
     }
     if (sywHit || Object.keys(_name).includes(name)) {
       let data = await mys.data(name, isZZZ ? 'syw' : isBH3 ? 'syw' : isSr ? 'yq' : 'syw', isSr, isZZZ, isBH3);
-      if (!data) return false;
-      if (Array.isArray(data)) {
-        data = data.find(v => v.title == name);
-        if (!data) return false;
+      if (Array.isArray(data)) data = data.find(v => v.title == name);
+      // 当前列表里没有（nanoka 的圣遗物列表本身不对，或新套装还没进 nanoka）：问米游社官方列表。
+      // 命中后直接用官方列表条目出图 —— 条目的 ext 里带套装效果表，不需要详情接口
+      // （官方详情接口免鉴权返回空内容，走不了）。
+      if (!data && !isZZZ && !isBH3) {
+        const found = await mys.officialFindByName(name, isSr ? 'yq' : 'syw', isSr);
+        if (found?.item) {
+          logger.mark(`[xhh][图鉴] ${name} 命中米游社官方列表（nanoka 列表未收录），按官方条目出图`);
+          data = found.item;
+        }
       }
+      if (!data) return false;
       if (isZZZ) {
         this.zzz_syw_pictures(e, data);
       } else if (isBH3) {
