@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import {
     mhy,
     yaml,
@@ -158,7 +159,7 @@ export class user extends plugin {
             // app_id: app_id,
             // device: headers['x-rpc-device_id'],
         };
-        let res = await fetch(url, {
+        let res = await mysReq(url, {
             method: "POST",
             headers,
             body: JSON.stringify(body),
@@ -198,7 +199,7 @@ export class user extends plugin {
 
         for (var n = 1; n < 150; n++) {
             await sleep(1000);
-            res = await fetch(url, {
+            res = await mysReq(url, {
                 method: "POST",
                 headers,
                 body: JSON.stringify(body),
@@ -538,7 +539,7 @@ export class user extends plugin {
         const BASE_URL = "http://api.ttocr.com/api"
 
         // 第一步：创建识别请求
-        const recognizeRes = await fetch(`${BASE_URL}/recognize`, {
+        const recognizeRes = await mysReq(`${BASE_URL}/recognize`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -572,7 +573,7 @@ export class user extends plugin {
         await sleep(INITIAL_DELAY)
 
         while (retries < MAX_RETRIES) {
-            result = await fetch(`${BASE_URL}/results?appkey=${API_KEY}&resultid=${recognizeRes.resultid}`, requestOptions)
+            result = await mysReq(`${BASE_URL}/results?appkey=${API_KEY}&resultid=${recognizeRes.resultid}`, requestOptions)
                 .then(res => res.json())
 
             if (result?.status !== 2) break
@@ -603,7 +604,7 @@ export class user extends plugin {
     async yue(e) {
         if (!config().Verification_API_KEY) return false
         let url = "http://api.ttocr.com/api/points?appkey=" + config().Verification_API_KEY
-        let data = await (await fetch(url)).json()
+        let data = await (await mysReq(url)).json()
         if (data.msg == "查询成功" && data.points) return e.reply(`剩余可用次数：约${Math.floor(data.points / 10)}次`)
         else return e.reply(data.msg)
     }

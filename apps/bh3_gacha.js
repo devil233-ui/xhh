@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { yaml, mhy, api, pluginPriority } from '#xhh';
 import fs from 'fs';
 import path from 'path';
@@ -195,7 +196,7 @@ export class bh3_gacha extends plugin {
       region,
     };
     const bodyStr = JSON.stringify(body);
-    const res = await fetch(GET_AUTHKEY_URL, {
+    const res = await mysReq(GET_AUTHKEY_URL, {
       method: 'POST',
       headers: {
         Cookie: stokenCookie,
@@ -262,7 +263,7 @@ export class bh3_gacha extends plugin {
     const seen = new Set();
     for (const menuType of menuTypes) {
       const params = this.gachaBaseParams(uid, authkey, menuType);
-      const res = await fetch(`${GACHA_MENUS_URL}?${params.toString()}`, {
+      const res = await mysReq(`${GACHA_MENUS_URL}?${params.toString()}`, {
         headers: gachaHeaders(),
       }).then(r => r.json());
       logger.mark(`[xhh][bh3_gacha] GetMenus raw type=${menuType} response:`, JSON.stringify(res));
@@ -290,7 +291,7 @@ export class bh3_gacha extends plugin {
     // 这里逐个探测并合并，避免 type=1 返回空数组时误判失败。
     for (const menuType of ['1', '2', '3', '4', '5', '6']) {
       const params = this.gachaBaseParams(uid, authkey, menuType);
-      const res = await fetch(`${GACHA_MENUS_URL}?${params.toString()}`, {
+      const res = await mysReq(`${GACHA_MENUS_URL}?${params.toString()}`, {
         headers: gachaHeaders(),
       }).then(r => r.json());
       logger.mark(`[xhh][bh3_gacha] GetMenus type=${menuType} response:`, JSON.stringify(res));
@@ -335,7 +336,7 @@ export class bh3_gacha extends plugin {
       params.set('page', String(page));
       params.set('size', '20');
       params.set('end_id', '0');
-      const res = await fetch(`${GACHA_LOG_URL}?${params.toString()}`, {
+      const res = await mysReq(`${GACHA_LOG_URL}?${params.toString()}`, {
         headers: gachaHeaders(),
       }).then(r => r.json());
       if (res?.retcode !== 0) logger.mark('[xhh][bh3_gacha] GetUserGacha response:', JSON.stringify(res));
@@ -388,7 +389,7 @@ export class bh3_gacha extends plugin {
         params.set('end_id', '0');
         let res;
         try {
-          res = await fetch(`${url}?${params.toString()}`, { headers: gachaHeaders() }).then(r => r.json());
+          res = await mysReq(`${url}?${params.toString()}`, { headers: gachaHeaders() }).then(r => r.json());
         } catch (err) {
           lastError = err?.message || String(err);
           break;
@@ -615,8 +616,8 @@ export class bh3_gacha extends plugin {
     const weaponIcon = {};
     try {
       const [chars, weapons] = await Promise.all([
-        fetch(`${BH3_WIKI_BASE}&channel_id=18`).then(r => r.json()),
-        fetch(`${BH3_WIKI_BASE}&channel_id=20`).then(r => r.json()),
+        mysReq(`${BH3_WIKI_BASE}&channel_id=18`).then(r => r.json()),
+        mysReq(`${BH3_WIKI_BASE}&channel_id=20`).then(r => r.json()),
       ]);
       for (const item of chars?.data?.list?.[0]?.list || []) {
         let rank = 0;
@@ -733,7 +734,7 @@ export class bh3_gacha extends plugin {
       const ext = new URL(absUrl).pathname.split('.').pop()?.split('?')[0] || 'png';
       const file = path.join(ICON_CACHE_DIR, `${safe}.${ext}`);
       if (!fs.existsSync(file)) {
-        const res = await fetch(absUrl);
+        const res = await mysReq(absUrl);
         if (!res.ok) return absUrl;
         const buf = Buffer.from(await res.arrayBuffer());
         fs.writeFileSync(file, buf);

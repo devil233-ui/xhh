@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { yaml, render, mys, config, reply_recallMsg } from '#xhh';
 import { gsRoleView, srRoleView } from '../system/role_detail.js';
 import fs from 'fs';
@@ -798,7 +799,7 @@ export class Wiki extends plugin {
     if (!this._zzzObcIconCache[channelId]) {
       try {
         const url = `https://api-takumi-static.mihoyo.com/common/blackboard/zzz_wiki/v1/home/content/list?app_sn=zzz_wiki&channel_id=${channelId}`;
-        const res = await fetch(url).then(r => r.json());
+        const res = await mysReq(url).then(r => r.json());
         const root = res?.data?.list?.[0];
         let list = Array.isArray(root?.list) ? root.list : [];
         if (!list.length && Array.isArray(root?.children)) {

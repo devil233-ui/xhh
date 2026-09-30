@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import { yaml, mhy, api, pluginPriority } from '#xhh';
 import fs from 'fs';
@@ -230,7 +231,7 @@ export class bh3_all_note extends plugin {
     };
     const [role, res] = await Promise.all([
       this.getRoleInfo(e, headers, auth.uid),
-      fetch(urls[game], { method: 'get', headers }).then(r => r.json()),
+      mysReq(urls[game], { method: 'get', headers }).then(r => r.json()),
     ]);
     if (res?.retcode !== 0) return null;
     const note = res.data || {};

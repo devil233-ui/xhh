@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from "node-fetch";
 import common from "../../../lib/common/common.js";
 import lodash from "lodash";
@@ -24,7 +25,7 @@ async function fetchVideoFeed(uid, name) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
     try {
-      const response = await fetch(url, {
+      const response = await mysReq(url, {
         headers: {
           Referer: "https://www.miyoushe.com/",
           "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",

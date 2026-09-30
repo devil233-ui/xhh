@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { yaml, config } from "#xhh";
 import common from "../../../lib/common/common.js";
 import fetch from "node-fetch";
@@ -220,7 +221,7 @@ export class sr_strategy extends plugin {
 
   /** 获取并下载图片 */
   async getData(name, url, x = false, q_ = 20, e) {
-    let response = await fetch(url);
+    let response = await mysReq(url);
     let res = await response.json();
     res = res.data.posts;
     let imgs = [];

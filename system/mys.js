@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import {
@@ -109,7 +110,7 @@ const getNanokaVer = async game => {
     if (NANOKA_VER_CACHE[game]) return NANOKA_VER_CACHE[game];
     let v = '';
     try {
-        const m = await (await fetch('https://static.nanoka.cc/manifest.json')).json();
+        const m = await (await mysReq('https://static.nanoka.cc/manifest.json')).json();
         v = String(m?.[game]?.latest || m?.[game]?.live || '');
     } catch (_) { v = ''; }
     NANOKA_VER_CACHE[game] = v;
@@ -131,9 +132,9 @@ let nanokaManifestCache = null;
 const getNanokaNew = async game => {
     if (!nanokaManifestCache) {
         try {
-            // .json() 也要 await：写成 (await fetch(..)).json() 的话存进去的是
+            // .json() 也要 await：写成 (await mysReq(..)).json() 的话存进去的是
             // Promise，取值恒为 undefined，未上线判定会静默全部失效。
-            nanokaManifestCache = (await (await fetch('https://static.nanoka.cc/manifest.json')).json()) || {};
+            nanokaManifestCache = (await (await mysReq('https://static.nanoka.cc/manifest.json')).json()) || {};
         } catch (err) {
             logger.debug?.('[xhh][图鉴] 读 nanoka manifest.json 失败:', err?.message || err);
             nanokaManifestCache = {};
@@ -446,7 +447,7 @@ const BH3_CHANNEL_MAP = {
 class mys {
     // 部分第三方图鉴源异常时会返回 HTML 错误页，不能直接调用 response.json()。
     async fetchJson(url, label = '') {
-        const response = await fetch(url, {
+        const response = await mysReq(url, {
             headers: {
                 Referer: 'https://www.miyoushe.com/',
                 'User-Agent': 'Mozilla/5.0'
@@ -494,7 +495,7 @@ class mys {
             if (fs.existsSync(file)) return localFileUrl(file);
 
             const url = `https://static.nanoka.cc/assets/zzz/${key}.webp`;
-            const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            const response = await mysReq(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const buffer = Buffer.from(await response.arrayBuffer());
             const sharp = (await import('sharp')).default;
@@ -714,7 +715,7 @@ class mys {
             'https://api-static.mihoyo.com/common/blackboard/sr_wiki/v1/home/content/list?app_sn=sr_wiki&channel_id=17';
         let res;
         try {
-            res = await fetch(url).then(res => res.json());
+            res = await mysReq(url).then(res => res.json());
         } catch (error) {
             logger.error('米游社访问失败');
             return false;
@@ -1054,11 +1055,11 @@ class mys {
     async bh3_tujian() {
         try {
             const [chars, weapons, stigmatas, elves, partners] = await Promise.all([
-                fetch(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.js}`).then(r => r.json()),
-                fetch(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.wq}`).then(r => r.json()),
-                fetch(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.syw}`).then(r => r.json()),
-                fetch(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.yq}`).then(r => r.json()),
-                fetch(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.hb}`).then(r => r.json())
+                mysReq(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.js}`).then(r => r.json()),
+                mysReq(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.wq}`).then(r => r.json()),
+                mysReq(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.syw}`).then(r => r.json()),
+                mysReq(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.yq}`).then(r => r.json()),
+                mysReq(`${BH3_WIKI_BASE}/v1/home/content/list?app_sn=${BH3_APP_SN}&channel_id=${BH3_CHANNEL_MAP.hb}`).then(r => r.json())
             ]);
             const parseList = (res, channelKey) => {
                 if (!res.data || !res.data.list || !res.data.list[0]) return [];
@@ -1534,7 +1535,7 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
             url = `https://api-static.mihoyo.com/common/blackboard/sr_wiki/v1/content/info?app_sn=sr_wiki&content_id=${id}`;
         let res;
         try {
-            res = await fetch(url).then(res => res.json());
+            res = await mysReq(url).then(res => res.json());
         } catch (error) {
             logger.error('米游社访问失败');
             return false;
@@ -1648,7 +1649,7 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
     async bh3_detail(id) {
         try {
             const url = `${BH3_WIKI_BASE}/v1/content/info?app_sn=${BH3_APP_SN}&content_id=${id}`;
-            const res = await fetch(url).then(r => r.json());
+            const res = await mysReq(url).then(r => r.json());
             if (res.retcode !== 0) return false;
             return { content: res.data.content };
         } catch (error) {

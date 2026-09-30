@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fs from 'fs';
 import fetch from 'node-fetch';
 import moment from 'moment';
@@ -154,7 +155,7 @@ export class bh3_calendar extends plugin {
   }
 
   async requestNews() {
-    const res = await fetch(NEWS_API, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
+    const res = await mysReq(NEWS_API, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`米游社列表 HTTP ${res.status}`);
     const json = await res.json();
     if (json?.retcode !== 0 || !Array.isArray(json?.data?.list)) throw new Error(`米游社列表异常：${json?.message || json?.retcode}`);
@@ -163,7 +164,7 @@ export class bh3_calendar extends plugin {
 
   async requestPost(postId) {
     if (!postId) return null;
-    const res = await fetch(POST_API + postId, { headers: this.headers(postId), signal: AbortSignal.timeout(10000) });
+    const res = await mysReq(POST_API + postId, { headers: this.headers(postId), signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`帖子详情 HTTP ${res.status}`);
     const json = await res.json();
     if (json?.retcode !== 0) throw new Error(`帖子详情异常：${json?.message || json?.retcode}`);

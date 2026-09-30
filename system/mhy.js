@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from "node-fetch";
 import md5 from "md5";
 import lodash from "lodash";
@@ -49,7 +50,7 @@ class mhy {
 
     let headers = this.getHeaders(e, ck, true, info);
 
-    let res = await fetch(this.fp_url, {
+    let res = await mysReq(this.fp_url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -65,11 +66,11 @@ class mhy {
     const device_id = headers["x-rpc-device_id"];
     const device_name = headers["x-rpc-device_name"];
     body = this.getbody_(device_id, device_name);
-    const res1 = await fetch(
+    const res1 = await mysReq(
       "https://bbs-api.miyoushe.com/apihub/api/deviceLogin",
       { method: "POST", headers, body: JSON.stringify(body) }
     ).then(res => res.json());
-    const res2 = await fetch(
+    const res2 = await mysReq(
       "https://bbs-api.miyoushe.com/apihub/api/saveDevice",
       { method: "POST", headers, body: JSON.stringify(body) }
     ).then(res => res.json());
@@ -155,7 +156,7 @@ class mhy {
     ];
     let res, Cookie, ltoken;
     for (let url of urls) {
-      res = await fetch(url, { method: "GET", headers }).then(res =>
+      res = await mysReq(url, { method: "GET", headers }).then(res =>
         res.json()
       );
       if (res.data?.cookie_token) Cookie = res.data?.cookie_token;

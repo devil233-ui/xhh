@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import moment from 'moment';
 import fs from 'fs';
@@ -34,8 +35,8 @@ async function ensureCookieToken(e, ck, entry = null) {
   if (!stuid || !stoken) return ck;
   try {
     const headers = mhy.getHeaders(e, ck);
-    const cookieRes = await fetch(`https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}`, { method: 'GET', headers }).then(r => r.json());
-    const ltokenRes = await fetch('https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken', { method: 'GET', headers }).then(r => r.json());
+    const cookieRes = await mysReq(`https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}`, { method: 'GET', headers }).then(r => r.json());
+    const ltokenRes = await mysReq('https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken', { method: 'GET', headers }).then(r => r.json());
     const cookieToken = cookieRes?.data?.cookie_token;
     const ltoken = ltokenRes?.data?.ltoken || entry?.ltoken;
     if (cookieToken && ltoken) return `ltoken=${ltoken};ltuid=${stuid};cookie_token=${cookieToken};account_id=${stuid};`;
@@ -571,7 +572,7 @@ export class TL extends plugin {
           ? `${this.zzzNoteUrl}?server=${encodeURIComponent(entry?.region || mhy.getServer(uid, 'zzz') || 'prod_gf_cn')}&role_id=${encodeURIComponent(uid)}`
           : game == 'gs' ? this.gsUrl : game == 'sr' ? this.srUrl : this.zzzUrl;
     if (config().debug && uidOverride) logger.mark(`[xhh][TL] ${game} uid=${uid} roleEndpoint=${useRoleEndpoint} url=${url}`);
-    const fetchOnce = () => fetch(url, { method: 'get', headers }).then(res => res.json());
+    const fetchOnce = () => mysReq(url, { method: 'get', headers }).then(res => res.json());
     let res = await fetchOnce();
     // 体力小组件是裸 fetch、不经过 MysInfo，captchaNotice 那条全局兜底够不着；
     // 撞风控码时调本地过码服务（同 captchaNotice 的 0/6/15s 梯度重试），用户无感。

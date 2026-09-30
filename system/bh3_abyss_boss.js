@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fs from 'fs';
 import fetch from 'node-fetch';
 import moment from 'moment';
@@ -259,13 +260,13 @@ function isCurrentAbyssGuidePost(post = {}) {
 
 async function searchMysPosts(keyword, uid, size = 8) {
   const url = `${SEARCH_API}?keyword=${encodeURIComponent(keyword)}&uid=${encodeURIComponent(uid)}&size=${size}&offset=0&sort_type=2`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 xhh' } }).then(r => r.json());
+  const res = await mysReq(url, { headers: { 'User-Agent': 'Mozilla/5.0 xhh' } }).then(r => r.json());
   return (res?.data?.list || []).map(v => v?.post?.post).filter(Boolean);
 }
 
 async function searchMysGlobalPosts(keyword, size = 10) {
   const url = `${GLOBAL_SEARCH_API}?gids=1&size=${size}&keyword=${encodeURIComponent(keyword)}&sort_type=2`;
-  const res = await fetch(url, {
+  const res = await mysReq(url, {
     headers: {
       Referer: 'https://www.miyoushe.com',
       'User-Agent': 'Mozilla/5.0 xhh',

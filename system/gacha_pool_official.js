@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 
 const NEWS_API = 'https://bbs-api-static.miyoushe.com/painter/wapi/getNewsList';
@@ -86,7 +87,7 @@ class OfficialGachaPool {
     let lastErr;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const res = await fetch(url, {
+        const res = await mysReq(url, {
           method: 'GET',
           headers: {
             Referer: 'https://www.miyoushe.com',

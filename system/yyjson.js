@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from "node-fetch";
 import { yaml } from "#xhh"
 
@@ -58,7 +59,7 @@ class yyjson {
     async gs_download(id) {
         try {
             let url = `https://api-takumi-static.mihoyo.com/hoyowiki/genshin/wapi/entry_page?app_sn=ys_obc&entry_page_id=${id}`;
-            let res = await fetch(url).then(r => r.json());
+            let res = await mysReq(url).then(r => r.json());
             let modules = res?.data?.page?.modules;
             if (!modules) return false;
 
@@ -103,7 +104,7 @@ class yyjson {
     async sr_download(id) {
         try {
             let url = `https://api-static.mihoyo.com/common/blackboard/sr_wiki/v1/content/info?app_sn=sr_wiki&content_id=${id}`;
-            let res = await fetch(url).then(r => r.json());
+            let res = await mysReq(url).then(r => r.json());
             let modules = res?.data?.content?.rpg_new_tmp_content?.modules;
             if (!modules) return false;
 
@@ -149,7 +150,7 @@ class yyjson {
             const names = yaml.get("./plugins/xhh/system/default/gs_en_id.yaml") || {};
             const id = names[name];
             if (!id) return false;
-            const response = await fetch(`https://gensh.honeyhunterworld.com/${id}/?lang=CHS`);
+            const response = await mysReq(`https://gensh.honeyhunterworld.com/${id}/?lang=CHS`);
             if (!response.ok) return false;
             return parseHoneyhunterVoice(await response.text(), "gs", id);
         } catch (err) {
@@ -162,7 +163,7 @@ class yyjson {
             const names = yaml.get("./plugins/xhh/system/default/sr_en_id.yaml") || {};
             const id = names[name];
             if (!id) return false;
-            const response = await fetch(`https://starrail.honeyhunterworld.com/${id}/?lang=CN`);
+            const response = await mysReq(`https://starrail.honeyhunterworld.com/${id}/?lang=CN`);
             if (!response.ok) return false;
             return parseHoneyhunterVoice(await response.text(), "sr", id);
         } catch (err) {

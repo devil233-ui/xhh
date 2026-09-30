@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import moment from 'moment';
 import { segment } from 'oicq';
@@ -114,7 +115,7 @@ function banReg(cfg) {
 }
 
 async function fetchJson(url, opt = {}) {
-  const res = await fetch(url, {
+  const res = await mysReq(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36' },
     signal: AbortSignal.timeout(opt.timeout || 12000),
   });

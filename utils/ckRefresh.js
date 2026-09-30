@@ -1,3 +1,4 @@
+import mysReq from './mysReq.js';
 /**
  * stoken → 完整 ck 的内部兑换（裁剪自 xhh-TL 的 utils/auth.js，供 ck 失效自愈复用）
  *
@@ -107,11 +108,11 @@ export async function stokenToCookie(entry) {
     }
     const midParam = mid ? `&mid=${encodeURIComponent(mid)}` : ''
     const authQuery = `stoken=${encodeURIComponent(stoken)}&uid=${encodeURIComponent(stuid)}${midParam}`
-    const cookieRes = await fetch(
+    const cookieRes = await mysReq(
       `https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?${authQuery}`,
       { method: 'GET', headers: { ...headers, DS: makeAppDs(authQuery) }, signal: AbortSignal.timeout(12000) },
     ).then(r => r.json())
-    const ltokenRes = await fetch(`https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken?${authQuery}`, {
+    const ltokenRes = await mysReq(`https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken?${authQuery}`, {
       method: 'GET',
       headers: { ...headers, DS: makeAppDs(authQuery) },
       signal: AbortSignal.timeout(12000),

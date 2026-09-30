@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -97,7 +98,7 @@ async function fetchJSON(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
   try {
-    const res = await fetch(url, {
+    const res = await mysReq(url, {
       signal: controller.signal,
       headers: {
         Referer: 'https://www.miyoushe.com',

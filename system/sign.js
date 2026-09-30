@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import md5 from 'md5';
@@ -111,7 +112,7 @@ async function ensureCookieToken(e, ck, entry = null) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 12000);
         try {
-            return await fetch(url, { method: 'GET', headers: mhy.getHeaders(e, ck), signal: controller.signal }).then(r => r.json());
+            return await mysReq(url, { method: 'GET', headers: mhy.getHeaders(e, ck), signal: controller.signal }).then(r => r.json());
         } finally {
             clearTimeout(timer);
         }
@@ -419,7 +420,7 @@ async function localBbsRequest(account, path, opt = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), BBS_REQUEST_TIMEOUT);
     try {
-        const response = await fetch(url, {
+        const response = await mysReq(url, {
             method,
             headers: {
                 ...bbsLocalHeaders(account, body, query),

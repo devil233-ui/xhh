@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { api, mhy, yaml, config, pluginPriority } from '#xhh';
 import puppeteer from '../../../lib/puppeteer/puppeteer.js';
 import NoteUser from '../../genshin/model/mys/NoteUser.js';
@@ -160,7 +161,7 @@ export class bh3_ledger extends plugin {
         const queryStr = `game_biz=bh3_cn&bind_uid=${uid}&bind_region=${region}`;
         const url = `https://api-takumi.mihoyo.com/event/handbook/${isLastMonth ? 'last_month_count' : 'current_month_count'}?${queryStr}`;
         try {
-            const res = await fetch(url, {
+            const res = await mysReq(url, {
                 method: 'GET',
                 headers: {
                     Cookie: headers.Cookie,
@@ -355,7 +356,7 @@ export class bh3_ledger extends plugin {
             try {
                 const queryStr = 'game_biz=bh3_cn';
                 const ds = mhy.getDs2(queryStr, '', '4');
-                let roleRes = await fetch('https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie?' + queryStr, {
+                let roleRes = await mysReq('https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie?' + queryStr, {
                     headers: {
                         Cookie: ck,
                         DS: ds,
@@ -566,7 +567,7 @@ export class bh3_ledger extends plugin {
 
     async getHitokoto() {
         try {
-            const res = await fetch(HITOKOTO_API, {
+            const res = await mysReq(HITOKOTO_API, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
             })
             if (res) {
@@ -617,7 +618,7 @@ export class bh3_ledger extends plugin {
         const { uid, headers, region } = auth;
         const queryStr = `game_biz=bh3_cn&bind_uid=${uid}&bind_region=${region}`;
         debugLog('[水晶] query:', queryStr);
-        const res = await fetch(`https://api.mihoyo.com/bh3-weekly_finance/api/index?${queryStr}`, {
+        const res = await mysReq(`https://api.mihoyo.com/bh3-weekly_finance/api/index?${queryStr}`, {
             method: 'GET',
             headers: {
                 Cookie: headers.Cookie,
@@ -655,7 +656,7 @@ export class bh3_ledger extends plugin {
         const { uid, headers, region } = auth;
         const queryStr = `game_biz=bh3_cn&bind_uid=${uid}&bind_region=${region}`;
         try {
-            const res = await fetch(`https://api.mihoyo.com/bh3-weekly_finance/api/getLastMonthInfo?${queryStr}`, {
+            const res = await mysReq(`https://api.mihoyo.com/bh3-weekly_finance/api/getLastMonthInfo?${queryStr}`, {
                 method: 'GET',
                 headers: {
                     Cookie: headers.Cookie,
@@ -761,9 +762,12 @@ export class bh3_ledger extends plugin {
                 await this.saveLedger(uid, MonthData);
             }
 
-            // 先补上个月的来源明细：group_by 只存在于 getLastMonthInfo，且只能取相邻的一个月，
-            // 放到读盘之前，后面的 monthList 就自然包含它了。
-            await this.captureLastMonthGroupBy(e, auth);
+            // 先补上个月的来源明细：group_by 只存在于 getLastMonthInfo，且只能取相邻的一个月，
+
+            // 放到读盘之前，后面的 monthList 就自然包含它了。
+
+            await this.captureLastMonthGroupBy(e, auth);
+
 
             const data = this.loadLedgerData(uid) || {};
             // 月份键形如 202609；只取合法键并按时间升序
@@ -841,7 +845,7 @@ export class bh3_ledger extends plugin {
             const { uid, headers, qq, region } = auth;
             let queryStr = `game_biz=bh3_cn&bind_uid=${uid}&bind_region=${region}`;
             debugLog('[水晶] query:', queryStr);
-            let res = await fetch(`https://api.mihoyo.com/bh3-weekly_finance/api/index?${queryStr}`, {
+            let res = await mysReq(`https://api.mihoyo.com/bh3-weekly_finance/api/index?${queryStr}`, {
                 method: 'GET',
                 headers: {
                     Cookie: headers.Cookie,
@@ -950,7 +954,7 @@ export class bh3_ledger extends plugin {
             const cachedLastMonthData = this.getHistoryMonth(uid, lastMonthKey);
 
             let queryStr = `game_biz=bh3_cn&bind_uid=${uid}&bind_region=${region}`;
-            let res = await fetch(`https://api.mihoyo.com/bh3-weekly_finance/api/getLastMonthInfo?${queryStr}`, {
+            let res = await mysReq(`https://api.mihoyo.com/bh3-weekly_finance/api/getLastMonthInfo?${queryStr}`, {
                 method: 'GET',
                 headers: {
                     Cookie: headers.Cookie,

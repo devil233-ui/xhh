@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import {
     mhy,
     config
@@ -262,7 +263,7 @@ async function api(e, data = {}) {
     let res
 
     try {
-        res = await fetch(url, obj).then(res => res.json());
+        res = await mysReq(url, obj).then(res => res.json());
     } catch (error) {
         logger.error(error);
         return false;
@@ -291,7 +292,7 @@ async function api(e, data = {}) {
                 if (isBbsApi && vc.challenge) obj.headers['x-rpc-challenge'] = vc.challenge;
                 for (const gap of LOCAL_RETRY_GAPS) {
                     if (gap) await new Promise((r) => setTimeout(r, gap));
-                    res = await fetch(url, obj).then((r) => r.json()).catch(() => false);
+                    res = await mysReq(url, obj).then((r) => r.json()).catch(() => false);
                     if (res && Number(res.retcode) === 0) break;
                 }
             }
@@ -311,7 +312,7 @@ async function api(e, data = {}) {
         else if (res.retcode == 1034 || res.retcode == 10035) {
             const yz = await new user().yz(e, game, data.headers)
             if (yz) {
-                res = await fetch(url, obj).then(res => res.json())
+                res = await mysReq(url, obj).then(res => res.json())
                 if (res.retcode == 1034 || res.retcode == 10035) e.reply(_err)
                 else return res
             } else e.reply(_err)
@@ -351,7 +352,7 @@ async function jiapiProxy(url, obj = {}, game, type = '') {
             method: obj.method || (obj.body ? 'POST' : 'GET'),
             game: getJiapiGame(game)
         };
-        const res = await fetch('https://mhy.989894366.xyz/mihoyo_api/get', {
+        const res = await mysReq('https://mhy.989894366.xyz/mihoyo_api/get', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

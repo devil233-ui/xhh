@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import { makeForwardMsg, render, yaml, pluginPriority } from '#xhh';
 import fs from 'fs';
 import YAML from 'yaml';
@@ -476,9 +477,9 @@ export class xhh_gacha_pool extends plugin {
 
   async fetchZzzCurrentAppend(history = []) {
     try {
-      const meta = await fetch(ZZZ_META_URL, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+      const meta = await mysReq(ZZZ_META_URL, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
       if (!meta?.zzz) return [];
-      const raw = await fetch(`${ZZZ_RAW_BASE}${meta.zzz}`, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+      const raw = await mysReq(`${ZZZ_RAW_BASE}${meta.zzz}`, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
       return this.normalizeZzzCurrentPools(raw, history);
     } catch (err) {
       logger.warn('[xhh][gacha_pool] 绝区零当前卡池附加数据获取失败:', err);
@@ -500,7 +501,7 @@ export class xhh_gacha_pool extends plugin {
       await redis.del(ZZZ_CACHE_EXPIRE_KEY);
     }
     try {
-      const res = await fetch(ZZZ_HISTORY_URL, { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(8000) });
+      const res = await mysReq(ZZZ_HISTORY_URL, { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = this.mergeZzzLocalPools(this.normalizeZzzData(await res.json()));
       const extra = await this.fetchZzzCurrentAppend(data);
@@ -1610,7 +1611,7 @@ export class xhh_gacha_pool extends plugin {
   // 调官方号搜索接口取某个官方号发的帖子列表
   async mysSearchPosts(uid = '', keyword = '') {
     const url = `${MYS_SEARCH_API}?keyword=${encodeURIComponent(keyword)}&uid=${uid}&size=20&offset=0&sort_type=2`;
-    const res = await fetch(url, {
+    const res = await mysReq(url, {
       headers: { Referer: 'https://www.miyoushe.com', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36' },
       signal: AbortSignal.timeout(8000)
     });
@@ -2198,7 +2199,7 @@ export class xhh_gacha_pool extends plugin {
       if (cached) return JSON.parse(cached);
     } catch (_) {}
     try {
-      const res = await fetch(ZZZ_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
+      const res = await mysReq(ZZZ_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
       const pools = this.parseZzzBwikiHtml(html);
@@ -2411,7 +2412,7 @@ export class xhh_gacha_pool extends plugin {
     const cacheKey = 'xhh:sr:bwiki:history:v4';
     try { const c = await redis.get(cacheKey); if (c) return JSON.parse(c); } catch (_) {}
     try {
-      const res = await fetch(SR_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
+      const res = await mysReq(SR_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const pools = this.parseSrBwikiHtml(await res.text());
       const hasPoolNames = Array.isArray(pools) && pools.some(pool =>
@@ -2432,7 +2433,7 @@ export class xhh_gacha_pool extends plugin {
     const cacheKey = 'xhh:ys:bwiki:history:v1';
     try { const c = await redis.get(cacheKey); if (c) return JSON.parse(c); } catch (_) {}
     try {
-      const res = await fetch(YS_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
+      const res = await mysReq(YS_BWIKI_URL, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const pools = this.parseYsBwikiHtml(await res.text());
       if (Array.isArray(pools) && pools.length) {
@@ -4861,7 +4862,7 @@ ${r.summary || ''}`;
     if (MYS_ASPECT_CACHE.has(url)) return MYS_ASPECT_CACHE.get(url);
     let aspect = 0;
     try {
-      const res = await fetch(url, {
+      const res = await mysReq(url, {
         headers: { Range: 'bytes=0-4095', Referer: 'https://www.miyoushe.com', 'User-Agent': 'Mozilla/5.0' },
         signal: AbortSignal.timeout(6000)
       });
@@ -5636,7 +5637,7 @@ ${r.summary || ''}`;
       let json = null;
       // 偶发限流/空结果时重试一次（实测同一关键词偶尔会返回空列表）
       for (let attempt = 0; attempt < 2; attempt++) {
-        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(12000) });
+        const res = await mysReq(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(12000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         json = await res.json();
         if (json?.retcode === 0 && (json?.data?.list || []).length) break;
@@ -6023,13 +6024,13 @@ ${r.summary || ''}`;
     if (!targets.length) return '';
     try {
       const listUrl = 'https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/home/content/list?app_sn=bh3_wiki&channel_id=18';
-      const listJson = await fetch(listUrl, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+      const listJson = await mysReq(listUrl, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
       const list = listJson?.data?.list?.[0]?.list || [];
       const hit = list.find(item => targets.includes(this.cleanBh3Name(item.title)))
         || list.find(item => targets.some(t => this.cleanBh3Name(item.title).includes(t) || t.includes(this.cleanBh3Name(item.title))));
       if (!hit?.content_id) return hit?.icon || '';
       const detailUrl = `https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/content/info?app_sn=bh3_wiki&content_id=${hit.content_id}`;
-      const detail = await fetch(detailUrl, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+      const detail = await mysReq(detailUrl, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
       const content = detail?.data?.content || {};
       const imgs = [];
       for (const section of content.contents || []) {
@@ -6131,7 +6132,7 @@ ${r.summary || ''}`;
       // getStarMaps 只取女武神/武器；装备补给还会展示圣痕套装，
       // 这里补圣痕图标映射，避免“花愈朝夕/岁岁如新”只能显示文字占位。
       try {
-        const res = await fetch('https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/home/content/list?app_sn=bh3_wiki&channel_id=19');
+        const res = await mysReq('https://api-takumi-static.mihoyo.com/common/blackboard/bh3_wiki/v1/home/content/list?app_sn=bh3_wiki&channel_id=19');
         const json = await res.json();
         maps.stigmataIcon = maps.stigmataIcon || {};
         for (const item of json?.data?.list?.[0]?.list || []) {

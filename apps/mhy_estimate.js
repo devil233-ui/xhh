@@ -1,3 +1,4 @@
+import mysReq from '../utils/mysReq.js';
 import fetch from 'node-fetch';
 import { makeForwardMsg, config, pluginPriority, oldPostWarn } from '#xhh';
 import fs from 'fs';
@@ -123,7 +124,7 @@ function getPresetArgs(key, cfg) {
 
 async function searchPosts(keyword, uid, size = 20) {
   const url = `${SEARCH_API}?keyword=${encodeURIComponent(keyword)}&uid=${encodeURIComponent(uid)}&size=${size}&offset=0&sort_type=2`;
-  const res = await fetch(url).then(r => r.json());
+  const res = await mysReq(url).then(r => r.json());
   return (res?.data?.list || []).map(v => v?.post?.post).filter(Boolean);
 }
 
@@ -133,7 +134,7 @@ async function searchPost(keyword, uid, size = 20) {
 
 async function searchGlobalPosts(keyword, gids = 1, size = 10) {
   const url = `${GLOBAL_SEARCH_API}?gids=${encodeURIComponent(gids)}&size=${size}&keyword=${encodeURIComponent(keyword)}&sort_type=2`;
-  const res = await fetch(url, {
+  const res = await mysReq(url, {
     headers: {
       Referer: 'https://www.miyoushe.com',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
@@ -146,7 +147,7 @@ async function fetchPostFull(post = {}, gids = 1) {
   if (!post?.post_id) return post;
   try {
     const url = `${POST_FULL_API}?gids=${encodeURIComponent(gids)}&read=1&post_id=${encodeURIComponent(post.post_id)}`;
-    const res = await fetch(url, {
+    const res = await mysReq(url, {
       headers: {
         Referer: 'https://www.miyoushe.com',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
@@ -365,7 +366,7 @@ function cleanupMysVod(maxAgeMs = 24 * 3600 * 1000) {
 async function downloadMysVideo(url, filePath) {
   cleanupMysVod(); // 下载前顺带清理超过 24h 的旧视频
   if (!fs.existsSync(VOD_TEMP_DIR)) fs.mkdirSync(VOD_TEMP_DIR, { recursive: true });
-  const res = await fetch(url, {
+  const res = await mysReq(url, {
     headers: {
       Referer: 'https://www.miyoushe.com',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
