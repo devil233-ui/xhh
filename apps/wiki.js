@@ -465,6 +465,13 @@ export class Wiki extends plugin {
     name = name.startsWith('图鉴') ? name.replace(/^图鉴/, '') : name.replace(/图鉴$/, '');
     name = name.replace(/^[:：\s]+|[:：\s]+$/g, '').trim();
     if (!name) return false;
+    // 宽规则是「#任意文本」都会进来，这里先挡掉明显属于其它插件指令的消息，省掉整轮无谓的图鉴探测：
+    // 1) 以命令词开头或结尾（#刷新卡池数据 / #小花火帮助 / #插件列表 / #抽卡统计 …）
+    // 2) 「图鉴」二字不在首尾（上面已剥掉一个首/尾的「图鉴」，仍有残留说明它夹在中间，
+    //    如 #角色图鉴列表；文档化的「图鉴xx」前缀写法不受影响）
+    const CMD_WORD = '强制更新|更新|帮助|搜索|刷新|查询|设置|列表|统计|状态|菜单|命令|指令|说明|教程|用法'
+    if (new RegExp(`^(?:${CMD_WORD})`).test(name) || new RegExp(`(?:${CMD_WORD})$`).test(name)) return false;
+    if (name.includes('图鉴')) return false;
     // 怪物/BOSS 图鉴交给 monster 插件，避免把「绝区零怪物图鉴」当成角色去查
     const skipName = name
       .replace(/^(原神|genshin|ys|gs|星穹铁道|崩坏星穹铁道|星铁|铁道|穹铁|sr|崩坏3|崩坏三|崩三|bh3)/i, '')
