@@ -766,32 +766,20 @@ export class Wiki extends plugin {
     if (data.length > 50)
       reply_recallMsg(e, `正在获取${_name}列表中,请等待...`, 30);
     const rankClassMap = { 五星: 'r5', 'S级': 'r5', 四星: 'r4', 'A级': 'r4', 三星: 'r3', 'B级': 'r3', 二星: 'r2', 一星: 'r1' };
-    data = data.map(item => {
-      const damageBadges = new Set(Array.isArray(item.damage) ? item.damage : [item.damage]);
-      const weaponBadges = new Set(Array.isArray(item.wuqi) ? item.wuqi : [item.wuqi]);
-      return {
-        ...item,
-        rankClass: rankClassMap[item.ji] || 'r0',
-        badges: (isBH3
-          ? [
-            item.yuanshu,
-            ...(Array.isArray(item.damage) ? item.damage : [item.damage]),
-            ...(Array.isArray(item.abnormal) ? item.abnormal : [item.abnormal]),
-            item.starRingField,
-            ...(Array.isArray(item.starRing) ? item.starRing : [item.starRing]),
-            item.wuqi
-          ]
-          // 星铁的特性来自命途/属性，不是元素/武器，不接上这两个分支星铁就只剩一个星级徽章
-          : isSr ? [item.ji, item.mingtu, item.shuxing]
-          : [item.ji, item.yuanshu, item.wuqi])
-          .filter(v => v && v !== '未知' && v !== 'false')
-          .map(v => {
-            const icon = this.getWikiIcon(v, isBH3 ? 'bh3' : isZZZ ? 'zzz' : isSr ? 'sr' : 'gs');
-            const largeBh3Icon = isBH3 && (damageBadges.has(v) || weaponBadges.has(v));
-            return { text: v, icon, kind: `${icon ? 'icon-only' : ''}${largeBh3Icon ? ' damage-icon' : ''}`.trim() };
-          })
-      };
-    });
+    data = data.map(item => ({
+      ...item,
+      rankClass: rankClassMap[item.ji] || 'r0',
+      badges: (isBH3
+        ? [item.yuanshu, ...(Array.isArray(item.damage) ? item.damage : [item.damage]), item.starRingField, ...(Array.isArray(item.starRing) ? item.starRing : [item.starRing]), item.wuqi]
+        // 星铁的特性来自命途/属性，不是元素/武器，不接上这两个分支星铁就只剩一个星级徽章
+        : isSr ? [item.ji, item.mingtu, item.shuxing]
+        : [item.ji, item.yuanshu, item.wuqi])
+        .filter(v => v && v !== '未知' && v !== 'false')
+        .map(v => {
+          const icon = this.getWikiIcon(v, isZZZ ? 'zzz' : isSr ? 'sr' : isBH3 ? 'bh3' : 'gs');
+          return { text: v, icon, kind: icon ? 'icon-only' : '' };
+        })
+    }));
     data = {
       name: _name,
       data: data,
