@@ -23,6 +23,18 @@
           <div class="node-title">{{node.title}}</div>
           <div class="node-meta">{{node.meta}}</div>
         </div>
+        {{if node.buffs && node.buffs.length}}
+        <div class="buff-list">
+          <div class="list-title">关卡增益</div>
+          {{each node.buffs b}}<div class="buff-item">{{if b.title}}<div class="buff-name">{{b.title}}{{if b.roomText}}<span class="buff-room">{{b.roomText}}</span>{{/if}}</div>{{/if}}{{if b.desc}}<div class="buff-desc">{{b.desc}}</div>{{/if}}</div>{{/each}}
+        </div>
+        {{/if}}
+        {{if node.selectable && node.selectable.length}}
+        <div class="buff-list">
+          <div class="list-title">可选增益</div>
+          {{each node.selectable s}}<div class="buff-item">{{if s.title}}<div class="buff-name">{{s.title}}</div>{{/if}}{{if s.desc}}<div class="buff-desc">{{s.desc}}</div>{{/if}}</div>{{/each}}
+        </div>
+        {{/if}}
         <div class="rooms">
           {{each node.rooms room}}
           <div class="room">
@@ -32,14 +44,13 @@
               <div class="weaknesses">
                 {{if room.weakness && room.weakness.length}}
                   {{each room.weakness w}}
-                  <span class="weakness" style="background:{{w.color}}">{{if w.icon}}<img class="weak-icon" src="{{w.icon}}" alt="{{w.name}}" onerror="this.remove()" />{{/if}}{{w.name}}</span>
+                  <span class="weakness">{{if w.icon}}<img class="weak-icon" src="{{w.icon}}" alt="{{w.name}}" onerror="this.remove()" />{{/if}}{{w.name}}</span>
                   {{/each}}
                 {{else}}
                   <span class="weakness none">弱点未标注</span>
                 {{/if}}
               </div>
             </div>
-            {{if room.buff}}<div class="room-buff">{{room.buff}}</div>{{/if}}
             <div class="monsters">
               {{each room.monsters mon}}
               <div class="monster">
@@ -48,19 +59,22 @@
                 </div>
                 <div class="m-info">
                   <div class="m-name">{{mon.name}}</div>
-                  <div class="m-elems">
-                    {{if mon.elementText && mon.elementText.length}}
-                      {{each mon.elementText el}}
-                      <span class="m-elem" style="background:{{el.color}}">{{if el.icon}}<img class="m-elem-icon" src="{{el.icon}}" alt="{{el.name}}" onerror="this.remove()" />{{/if}}{{el.name}}</span>
-                      {{/each}}
-                    {{/if}}
-                    {{if mon.resistText && mon.resistText.length}}
-                      <span class="weak-label resist-label">抗性</span>
-                      {{each mon.resistText r}}
-                      <span class="m-elem resist-elem" style="background:{{r.color}}">{{if r.icon}}<img class="m-elem-icon" src="{{r.icon}}" alt="{{r.name}}" onerror="this.remove()" />{{/if}}{{r.name}}</span>
-                      {{/each}}
-                    {{/if}}
+                  {{if mon.elementText && mon.elementText.length}}
+                  <div class="m-line">
+                    <span class="weak-label">弱点</span>
+                    {{each mon.elementText el}}
+                    <span class="m-elem">{{if el.icon}}<img class="m-elem-icon" src="{{el.icon}}" alt="{{el.name}}" onerror="this.remove()" />{{/if}}{{el.name}}</span>
+                    {{/each}}
                   </div>
+                  {{/if}}
+                  {{if mon.resistText && mon.resistText.length}}
+                  <div class="m-line">
+                    <span class="weak-label resist-label">抗性</span>
+                    {{each mon.resistText r}}
+                    <span class="m-elem resist-elem">{{if r.icon}}<img class="m-elem-icon" src="{{r.icon}}" alt="{{r.name}}" onerror="this.remove()" />{{/if}}{{r.name}}</span>
+                    {{/each}}
+                  </div>
+                  {{/if}}
                   <div class="m-stat">{{mon.statsText}}</div>
                 </div>
               </div>
@@ -86,25 +100,22 @@
           </div>
           <div class="m-info">
             <div class="m-name boss-name">{{item.boss.name}}</div>
-            <div class="m-elems">
-              {{if item.boss.elementText && item.boss.elementText.length}}
-                {{each item.boss.elementText el}}
-                <span class="m-elem" style="background:{{el.color}}">{{if el.icon}}<img class="m-elem-icon" src="{{el.icon}}" alt="{{el.name}}" onerror="this.remove()" />{{/if}}{{el.name}}</span>
-                {{/each}}
-              {{/if}}
-              {{if item.weakness && item.weakness.length}}
-                <span class="weak-label">弱点</span>
-                {{each item.weakness w}}
-                <span class="m-elem" style="background:{{w.color}}">{{if w.icon}}<img class="m-elem-icon" src="{{w.icon}}" alt="{{w.name}}" onerror="this.remove()" />{{/if}}{{w.name}}</span>
-                {{/each}}
-              {{/if}}
-              {{if item.boss.resistText && item.boss.resistText.length}}
-                <span class="weak-label resist-label">抗性</span>
-                {{each item.boss.resistText r}}
-                <span class="m-elem resist-elem" style="background:{{r.color}}">{{if r.icon}}<img class="m-elem-icon" src="{{r.icon}}" alt="{{r.name}}" onerror="this.remove()" />{{/if}}{{r.name}}</span>
-                {{/each}}
-              {{/if}}
+            {{if item.boss.weaknessText && item.boss.weaknessText.length}}
+            <div class="m-line">
+              <span class="weak-label">弱点</span>
+              {{each item.boss.weaknessText w}}
+              <span class="m-elem">{{if w.icon}}<img class="m-elem-icon" src="{{w.icon}}" alt="{{w.name}}" onerror="this.remove()" />{{/if}}{{w.name}}</span>
+              {{/each}}
             </div>
+            {{/if}}
+            {{if item.boss.resistText && item.boss.resistText.length}}
+            <div class="m-line">
+              <span class="weak-label resist-label">抗性</span>
+              {{each item.boss.resistText r}}
+              <span class="m-elem resist-elem">{{if r.icon}}<img class="m-elem-icon" src="{{r.icon}}" alt="{{r.name}}" onerror="this.remove()" />{{/if}}{{r.name}}</span>
+              {{/each}}
+            </div>
+            {{/if}}
             <div class="m-stat">{{item.boss.statsText}}</div>
           </div>
         </div>
@@ -124,7 +135,7 @@
       {{/each}}
     {{/if}}
 
-    <footer>获取时间 {{generatedAt}} · from 小花火/YUYUYUYU2147</footer>
+    <footer>数据来源：Nanoka · 获取时间 {{generatedAt}} · from 小花火</footer>
   </main>
 </div>
 </body>
