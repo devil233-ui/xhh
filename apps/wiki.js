@@ -1386,7 +1386,9 @@ export class Wiki extends plugin {
     if (wq) {
       const { id } = await mys.data(wq, isZZZ ? 'wq' : isBH3 ? 'wq' : isSr ? 'gz' : 'wq', isSr, isZZZ, isBH3);
       if (!id) return false;
-      let data = await mys.detail(id, isSr, isZZZ, isBH3);
+      // kind='weapon'：武器/光锥详情走官方源；拿不到就放行给后面的插件，绝不拿 null 去渲染
+      let data = await mys.detail(id, isSr, isZZZ, isBH3, false, 'weapon');
+      if (!data) return false;
       if (isZZZ) this.zzz_wq_pictures(e, data);
       else if (isBH3) this.bh3_wq_pictures(e, data, roleName);
       else if (isSr) this.sr_gz_pictures(e, data);

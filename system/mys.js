@@ -1157,12 +1157,19 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
         if (!data) return false;
         let list = data.js_list;
         switch (type) {
-            case 'wq':
-                list = data.wq_list;
+            case 'wq': {
+                // 武器与光锥的详情都只能问官方（渲染器读官方 HTML 结构），
+                // 而 nanoka 的 id 对官方接口无效（原神武器 13516 / 星铁光锥 23055 实测 404），
+                // 所以这两个分类的列表也一律用官方，保证 id 与详情同源。只有角色仍 nanoka 优先。
+                const offWq = (await this.official_tujian(isSr))?.wq_list;
+                list = offWq?.length ? offWq : data.wq_list;
                 break;
-            case 'gz':
-                list = data.gz_list;
+            }
+            case 'gz': {
+                const offGz = isSr ? (await this.official_tujian(true))?.gz_list : null;
+                list = offGz?.length ? offGz : data.gz_list;
                 break;
+            }
             case 'syw':
             case 'yq': {
                 // nanoka 的 syw_list/yq_list 实际是物品列表（原石/摩拉…），不是圣遗物/遗器套装，
@@ -1549,17 +1556,20 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
     }
 
     //获取详细信息
-    async detail(id, isSr = false, isZZZ = false, isBH3 = false, zzzOfficial = false) {
+    async detail(id, isSr = false, isZZZ = false, isBH3 = false, zzzOfficial = false, kind = 'character') {
         if (isZZZ) {
             return await this.zzz_detail(id, zzzOfficial);
         }
         if (isBH3) {
             return await this.bh3_detail(id);
         }
-        // nanoka 优先。米游社的 entry_page 免鉴权会返回空 content（实测 retcode=0 但
-        // content 是空串、ext 是 {}），也就是说这条链本来就得依赖用户 Cookie；
+        // 武器/光锥（kind='weapon'）只走官方：渲染器读的是官方 HTML 结构
+        // （原神 entry_page 的 page.modules、星铁 content/info 的 content.contents），
+        // 而 nanoka 的武器/光锥 JSON 是另一套字段，喂进去会渲染失败。
+        // 角色（character）仍然 nanoka 优先：米游社的 entry_page 免鉴权会返回空 content
+        // （实测 retcode=0 但 content 是空串、ext 是 {}），这条链本来就得依赖用户 Cookie；
         // 换到 nanoka 后连 Cookie 都不需要了。
-        if (!nanokaDown()) {
+        if (!nanokaDown() && kind === 'character') {
             try {
                 const data = await this.nanoka_detail(id, isSr);
                 if (data) return data;
@@ -1596,7 +1606,11 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
         const game = isSr ? 'hsr' : 'gi';
         const base = await nanokaBase(game);
         if (!base) return false;
-        const data = await this.fetchJson(`${base}/zh/character/${id}.json`, `${game} nanoka详情 ${id}`);
+        // 用 mysReq 自己判断状态码：该 id 不在 nanoka（例如官方 id 空间）属正常未收录，
+        // 静默返回 false 交给官方源，不再刷 ERROR。
+        const res = await mysReq(`${base}/zh/character/${id}.json`, { signal: AbortSignal.timeout(15000) }).catch(() => null);
+        if (!res || res.status !== 200) return false;
+        const data = await res.json().catch(() => null);
         if (!data || !data.name) return false;
         // 详情 JSON 里没有 id 字段，但立绘/技能图标全靠它拼，缺了会拼成
         // avatardrawcard/.webp 这种空地址
