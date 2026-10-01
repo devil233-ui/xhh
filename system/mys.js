@@ -103,23 +103,10 @@ const ZZZ_WIKI_CHANNEL_MAP = {
  * 星铁 99 个角色 id 交集只有 1 个，172 个光锥 id 交集为 0），
  * 所以列表与详情必须同源，不能拿 nanoka 的 id 去请求米游社。
  * -------------------------------------------------------------------------- */
-const NANOKA_ASSET = 'https://static.nanoka.cc/assets';
 // 版本号从 manifest 动态取，nanoka 与米游社用的是同一份 manifest
-let NANOKA_VER_CACHE = {};
-const getNanokaVer = async game => {
-    if (NANOKA_VER_CACHE[game]) return NANOKA_VER_CACHE[game];
-    let v = '';
-    try {
-        const m = await (await mysReq('https://static.nanoka.cc/manifest.json')).json();
-        v = String(m?.[game]?.latest || m?.[game]?.live || '');
-    } catch (_) { v = ''; }
-    NANOKA_VER_CACHE[game] = v;
-    return v;
-};
-const nanokaBase = async game => {
-    const v = await getNanokaVer(game);
-    return v ? `https://static.nanoka.cc/${game}/${v}` : '';
-};
+;
+;
+;
 // manifest.json 除了 latest/available/live 还有个 new —— 按实体列出「这一版
 // 新增的 id」。live 落后 latest 的那部分就是测试服，所以 new.* 就是未上线内容
 // 的权威名单，不用再靠 release 是不是 1970 去猜、也不用手维护武器名。
@@ -128,25 +115,7 @@ const nanokaBase = async game => {
 //   new.weapon    [14525, 224101, 224102]
 // hsr new.character [1511]（阿哈）、new.lightcone [22009, 23065]
 // zzz new.character [1631, 1641]、new.weapon [13022, 14163, 14164]
-let nanokaManifestCache = null;
-const getNanokaNew = async game => {
-    if (!nanokaManifestCache) {
-        try {
-            // .json() 也要 await：写成 (await mysReq(..)).json() 的话存进去的是
-            // Promise，取值恒为 undefined，未上线判定会静默全部失效。
-            nanokaManifestCache = (await (await mysReq('https://static.nanoka.cc/manifest.json')).json()) || {};
-        } catch (err) {
-            logger.debug?.('[xhh][图鉴] 读 nanoka manifest.json 失败:', err?.message || err);
-            nanokaManifestCache = {};
-        }
-    }
-    const g = nanokaManifestCache?.[game];
-    const out = {};
-    for (const [k, v] of Object.entries(g?.new || {})) {
-        if (Array.isArray(v)) out[k] = new Set(v.map(x => String(x)));
-    }
-    return out;
-};
+;
 
 
 // 原神头像：nanoka 的 icon 字段本身就是 UI_AvatarIcon_Ayaka 这种方形头像名，
@@ -162,16 +131,8 @@ const getNanokaNew = async game => {
 //   _Card    128/152  比 _Circle 还少 Gaming Jahoda Varka
 // 万一以后基础版缺图，回落到 _Circle（覆盖面次广），由 list.html 的 onerror 自动切换。
 // 不硬编码「哪几个角色缺图」——名单会随版本变。
-const nanokaGsIcon = icon => {
-    const key = String(icon || '').replace(/^UI_AvatarIcon_/, '');
-    if (!key) return '';
-    return `${NANOKA_ASSET}/gi/UI_AvatarIcon_${key}.webp`;
-};
-const nanokaGsIconCircle = icon => {
-    const key = String(icon || '').replace(/^UI_AvatarIcon_/, '');
-    if (!key) return '';
-    return `${NANOKA_ASSET}/gi/UI_AvatarIcon_${key}_Circle.webp`;
-};
+;
+;
 // 原神武器/遗器等小图标
 //
 // 资源名必须**保留** UI_EquipIcon_ / UI_ItemIcon_ 前缀。
@@ -184,32 +145,13 @@ const nanokaGsIconCircle = icon => {
 //   真实资源名是       UI_Gacha_EquipIcon_Bow_MorphYayu_Great.webp
 // 规律是「UI_EquipIcon_ → UI_Gacha_EquipIcon_」并且去掉结尾的 _{0}。
 // 之前误以为这些没托管、直接返回空串走首字占位，其实只是拼错了名字。
-const nanokaGsItemIcon = icon => {
-    const key = String(icon || '');
-    if (!key) return '';
-    if (/_\{0\}$/.test(key)) return gsSkinIcon(key);
-    if (/Template/.test(key)) return '';
-    return `${NANOKA_ASSET}/gi/${key}.webp`;
-};
 /** 皮肤武器的 Gacha 版图标，用作 onerror 兜底（见 nanokaGsItemIcon 的注释） */
-const gsSkinIcon = key => {
-    const base = String(key || '').replace(/_\{0\}$/, '');
-    if (!base) return '';
-    return `${NANOKA_ASSET}/gi/${base.replace(/^UI_EquipIcon_/, 'UI_Gacha_EquipIcon_')}.webp`;
-};
 // 星铁立绘（详情页大图用）：avatardrawcard/{角色id}.webp，实测 99/99 全部 200。
 // 列表头像不用它 —— 那是 2048×2048 的卡面，裁成 90×90 只能看到头发。
-const nanokaSrIcon = id => (id ? `${NANOKA_ASSET}/hsr/avatardrawcard/${id}.webp` : '');
 
 // nanoka 的 zh 字段偶尔带内部标记，星铁「银狼」就是
 // "银狼LV.<unbreak>999</unbreak>"（实测唯一一条，原神 152 条全干净）。
 // 只去掉这一类标记，不能无脑剥所有标签 —— 日文名里 {RUBY_B#…} 是注音结构，剥了会散。
-const cleanNanokaName = v => String(v || '')
-    .replace(/LV\.<unbreak>.*?<\/unbreak>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
 /** nanoka 的 id 可能是 10000005-2 这种多形态拼接，取数字前缀 */
 const numId = id => {
     const m = String(id ?? '').match(/^\d+/);
@@ -374,9 +316,6 @@ function sortWeaponEntries(weapons, isSr = false, isGs = false, newIds = null) {
 // 改成 shopicon 之后 99 个角色同一套源、零 404、不需要兜底链。
 // （上一版注释里写「avatarshopicon 98/99 缺 1224」是测错了 ——
 //   那轮只抽查了部分样本，1224 实测是 200。）
-const nanokaSrAvatar = id => (id ? `${NANOKA_ASSET}/hsr/avatarshopicon/${id}.webp` : '');
-const nanokaSrLcIcon = id => (id ? `${NANOKA_ASSET}/hsr/lightconemaxfigures/${id}.webp` : '');
-const nanokaSrSkillIcon = (id, kind) => (id && kind ? `${NANOKA_ASSET}/hsr/skillicons/SkillIcon_${id}_${kind}.webp` : '');
 
 const GS_ELEMENT_CN = {
     Pyro: '火', Cryo: '冰', Electro: '雷', Hydro: '水', Anemo: '风',
@@ -781,154 +720,11 @@ class mys {
     }
 
     // nanoka 版列表（原神/星铁已不再调用，留作参考实现）
-    async nanoka_tujian_entry(isSr = false, isZZZ = false, isBH3 = false) {
-        if (isZZZ) {
-            return await this.zzz_tujian();
-        }
-        if (isBH3) {
-            return await this.bh3_tujian();
-        }
-        if (!nanokaDown()) {
-            try {
-                const data = await this.nanoka_tujian(isSr);
-                if (data && (data.js_list?.length || data.gz_list?.length || data.wq_list?.length)) return data;
-                logger.warn?.('[xhh][图鉴] nanoka 返回空，回退米游社官方 Wiki');
-            } catch (error) {
-                // 仅网络/接口类失败才全局降级，代码 bug 直接抛出（见 isTransientNetError）
-                if (isTransientNetError(error)) markNanokaDown();
-                logger.error('原神/星铁 nanoka 图鉴访问失败，切换米游社官方 Wiki:', error);
-            }
-        }
-        return await this.official_tujian(isSr);
-    }
-
     /**
      * nanoka 版原神/星铁图鉴列表。
      * 产出与米游社一致的 {js_list, wq_list, syw_list, gz_list, yq_list}，
      * 其中 ext 里的 filter.text 决定列表的星级徽章与筛选，必须在此处合成。
      */
-    async nanoka_tujian(isSr = false) {
-        const game = isSr ? 'hsr' : 'gi';
-        const base = await nanokaBase(game);
-        if (!base) throw new Error('nanoka 版本号获取失败');
-        const isGs = !isSr;
-        const wqFile = isGs ? 'weapon.json' : 'lightcone.json';
-        const [chars, equips, weapons] = await Promise.all([
-            this.fetchJson(`${base}/character.json`, `${game} nanoka角色`),
-            this.fetchJson(`${base}/zh/item.json`, `${game} nanoka物品`),
-            this.fetchJson(`${base}/${wqFile}`, `${game} nanoka武器/光锥`)
-        ]);
-        if (!chars) throw new Error('nanoka 角色数据为空');
-
-        // 物品（圣遗物/遗器）按 nanoka 的数字 id 分组
-        const itemList = Object.values(equips || {}).filter(v => v && (v.name || v.icon));
-
-        // nanoka 把旅行者/奇偶的七个形态平铺成 xxx-2 ~ xxx-8（实测 28 条），
-        // 而且 character.json 里**没有本体条目**（10000005 / 10000117 等都不存在），
-        // 直接全部过滤会让旅行者和奇偶从列表里彻底消失（旧米游社列表里是有这 16 条的）。
-        // 这些形态共用同一份立绘（PlayerBoy / PlayerGirl / MannequinBoy / MannequinGirl，实测均 200），
-        // 所以按名字去重、每个只留第一条，既不出现 7 个重复条目，也不会拼出
-        // UI_Gacha_AvatarImg_XXX-5.webp 这种不存在的地址。
-        const seenName = new Set();
-        // nanoka 会用 {NICKNAME} 占位未实装角色，这种条目没有名字也没有图，直接剔掉
-        const newChars = (await getNanokaNew(game))?.character || new Set();
-        const charEntries = Object.entries(chars)
-            .filter(([, c]) => c?.zh && !/^\{[A-Z_]+\}$/.test(c.zh))
-            .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'en', { numeric: true }))
-            .filter(([, c]) => {
-                const key = `${c.zh}|${c.element || ''}`;
-                if (seenName.has(key)) return false;
-                seenName.add(key);
-                return true;
-            })
-            // 按上线时间降序 = 新的排前面。
-            //
-            // 两个坑：
-            // 1) release 的形态两个游戏不一样：原神是 'YYYY-MM-DD HH:mm:SS' 字符串
-            //    （实测 152 条全是这种），星铁是秒级时间戳数字（97 条）。
-            //    原来直接 String().localeCompare 混着比，跨游戏毫无意义。
-            // 2) nanoka 用 1970-01-01 / undefined 表示「没有上线时间」。
-            //    实测这类条目是：原神 米提亚(10000136)、瓦列里(10000137)、
-            //    旅行者的一堆形态(10000005-2 等)；星铁 真珠(1503)、星神★阿哈(1511)。
-            //    之前这些会被当成「时间最早」直接沉到列表最底 —— 用户要的是
-            //    「米提亚是新角色应该排最前」，实际排在了五星组最后一名。
-            //    没有上线时间 = 尚未实装 = 比所有已上线的新 → 当作最新。
-            //    例外是旅行者：它同样是 1970，但它是最初的角色，必须沉到最后，
-            //    所以单独按主角处理。
-            // 3) 时间相同时（同一批上线的角色）再按 id 降序兜底，
-            //    否则顺序取决于 JSON 的键序，每次刷新可能不一样。
-            .sort((a, b) => (releaseRank(b[1], b[0]) - releaseRank(a[1], a[0]))
-                || (numId(b[0]) - numId(a[0])));
-
-        const js_list = charEntries.map(([id, c]) => {
-            // 两个游戏都用方形头像：原神 UI_AvatarIcon_XXX，星铁 avataricon/avatar/{id}。
-            // 方形贴方形框（90×90 + border-radius:10px），圆形图四角透明会被圆角削掉。
-            // 两边都同源 nanoka，不会再出现两套 id 撞号查错人。
-            const icon = isGs ? nanokaGsIcon(c.icon) : nanokaSrAvatar(id);
-            const strings = isGs
-                ? [`星级/${gsRarityCn(c.rank)}`, `元素/${GS_ELEMENT_CN[c.element] || ''}`, `武器/${GS_WEAPON_CN[c.weapon] || ''}`]
-                : [`星级/${srRarityCn(c.rank)}`, `命途/${SR_PATH_CN[c.baseType] || ''}`, `属性/${SR_DAMAGE_CN[c.damageType] || ''}`];
-            return {
-                content_id: id,
-                title: cleanNanokaName(c.zh) || c.en || id,
-                icon,
-                // 兜底链由 list.html 的 onerror 逐级切换（mys.data() 负责把
-                // iconFallback 透传下来，缺了这条链整段就是死的）。
-                // 星铁不需要了：avatarshopicon 全量 99/99，零缺失、零 404。
-                // 原神保留一层 _Circle 兜底（实测 131/152，比基础版少 21 个）。
-                iconFallback: isGs ? nanokaGsIconCircle(c.icon) : '',
-                aliases: [c.code, c.en, c.codename].filter(v => v && v !== c.zh),
-                ext: makeExt(strings, icon)
-            };
-        });
-
-        const equipList = itemList.map(it => ({
-            content_id: String(it.id ?? it.ID ?? ''),
-            title: it.name || '',
-            icon: isGs ? nanokaGsItemIcon(it.icon) : `${NANOKA_ASSET}/hsr/itemfigures/${it.id ?? it.ID}.webp`,
-            ext: makeExt([], '')
-        }));
-
-        // 武器/光锥预排序，理由见 sortWeaponEntries 的注释。
-        // 这里只排一次，wiki.js 的 list() 还会按星级排一次；
-        // Array.sort 是稳定的，所以同星级内会保住这里的顺序。
-        const newWeapons = (await getNanokaNew(game))?.[isGs ? 'weapon' : 'lightcone'] || new Set();
-        const weaponEntries = sortWeaponEntries(weapons, !isGs, isGs, newWeapons);
-
-        let gz_list = [], wq_list = [];
-        if (isGs) {
-            wq_list = weaponEntries.map(([id, w]) => {
-                const icon = nanokaGsItemIcon(w.icon);
-                return {
-                    content_id: id,
-                    title: w.zh || w.en || id,
-                    icon,
-                    // 皮肤武器再兜一层 Gacha 版：有一把（380002「超厉害魔法钥匙」）
-                    // weapon.json 给的是 UI_EquipIcon_Claymore_LoliFriend，
-                    // 页面引用的是 UI_Gacha_EquipIcon_Claymore_LoliFriend.webp，
-                    // 但那个文件实测 404 —— 留着兜底链，指不定 nanoka 哪天补上。
-                    iconFallback: /_\{0\}$/.test(String(w.icon || '')) ? '' : gsSkinIcon(w.icon),
-                    ext: makeExt([`武器星级/${gsWeaponRarityCn(w.rank)}`, `武器类型/${GS_WEAPON_CN_OVERRIDE[w.zh] || GS_WEAPON_CN[w.type] || ''}`], icon)
-                };
-            });
-        } else {
-            gz_list = weaponEntries.map(([id, l]) => {
-                const icon = nanokaSrLcIcon(id);
-                return {
-                    content_id: id,
-                    title: l.zh || l.en || id,
-                    icon,
-                    ext: makeExt([`星级/${srRarityCn(l.rank)}`, `命途/${SR_PATH_CN[l.baseType] || ''}`], icon)
-                };
-            });
-        }
-
-        return {
-            js_list,
-            ...(isGs ? { wq_list, syw_list: equipList, yq_list: equipList } : { gz_list, yq_list: equipList })
-        };
-    }
-
     // 绝区零图鉴（nanoka.cc 优先，米游社官方 Wiki 回退）
     async zzz_tujian() {
         // 冷却期内直接走官方 Wiki，不再请求已失效的 nanoka
@@ -1606,21 +1402,6 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
      * 原神：skills(4个, 含等级缩放) / constellations(命座) / passives(天赋)
      *       / materials(突破材料) / attack / energy / chara_info
      */
-    async nanoka_detail(id, isSr = false) {
-        const game = isSr ? 'hsr' : 'gi';
-        const base = await nanokaBase(game);
-        if (!base) return false;
-        // 用 mysReq 自己判断状态码：该 id 不在 nanoka（例如官方 id 空间）属正常未收录，
-        // 静默返回 false 交给官方源，不再刷 ERROR。
-        const res = await mysReq(`${base}/zh/character/${id}.json`, { signal: AbortSignal.timeout(15000) }).catch(() => null);
-        if (!res || res.status !== 200) return false;
-        const data = await res.json().catch(() => null);
-        if (!data || !data.name) return false;
-        // 详情 JSON 里没有 id 字段，但立绘/技能图标全靠它拼，缺了会拼成
-        // avatardrawcard/.webp 这种空地址
-        return { content: { ...data, id: String(id), ...(isSr ? await this.hsr_detail_maps(base) : {}) }, nanoka: true };
-    }
-
     /**
      * 星铁详情页要用到名字/图标，但都不在 character/{id}.json 里：
      *   培养材料  只有 item_id  → zh/item.json      取 item_name
@@ -1630,18 +1411,6 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
      * （原神不用：突破材料的名字内联在 materials 里，图标又能由
      *   UI_ItemIcon_{item_id} 直接推出，实测 9/9 全 200。）
      */
-    async hsr_detail_maps(base) {
-        this._hsrMaps ||= {};
-        if (this._hsrMaps[base]) return this._hsrMaps[base];
-        const [item, lightcone, relicset] = await Promise.all([
-            this.fetchJson(`${base}/zh/item.json`, 'hsr nanoka物品'),
-            this.fetchJson(`${base}/lightcone.json`, 'hsr nanoka光锥'),
-            this.fetchJson(`${base}/relicset.json`, 'hsr nanoka遗器'),
-        ]);
-        this._hsrMaps[base] = { itemMap: item || {}, lightconeMap: lightcone || {}, relicsetMap: relicset || {} };
-        return this._hsrMaps[base];
-    }
-
     // 绝区零详细信息（nanoka.cc 优先，米游社官方 Wiki 回退）
     // forceOfficial=true：id 已知是官方 content_id（来自 zzz_data 的官方兜底匹配），跳过 nanoka 直接走官方
     async zzz_detail(id, forceOfficial = false) {
