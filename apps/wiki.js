@@ -1464,6 +1464,7 @@ export class Wiki extends plugin {
       isSr = hitSr;
       let data = await mys.detail(id, isSr, isZZZ, isBH3);
       if (!data) { dbg('角色详情获取失败:', rname, 'id=' + id); return false; }
+        // data.nanoka 分支已不会命中（原神/星铁详情一律走官方）；保留渲染器定义备查
         if (data?.nanoka) return this.nanoka_role_pictures(e, data, isSr);
         else if (isZZZ) this.zzz_role_pictures(e, data);
       else if (isBH3) this.bh3_role_pictures(e, data);

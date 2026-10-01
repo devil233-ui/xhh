@@ -767,8 +767,21 @@ class mys {
         return data;
     }
 
-    //原神/星铁图鉴：nanoka 优先（体积小一个数量级），米游社官方 Wiki 兜底
+    // 原神/星铁图鉴：一律走米游社官方 Wiki（免鉴权，且字段正是渲染器要的那套）。
+    // nanoka 已不再参与：它的 id 与官方不是同一套（光锥 23055 vs 8119），
+    // 列表/详情混用必然对不上。绝区零/崩三仍走各自的数据链。
     async tujian(isSr = false, isZZZ = false, isBH3 = false) {
+        if (isZZZ) {
+            return await this.zzz_tujian();
+        }
+        if (isBH3) {
+            return await this.bh3_tujian();
+        }
+        return await this.official_tujian(isSr);
+    }
+
+    // nanoka 版列表（原神/星铁已不再调用，留作参考实现）
+    async nanoka_tujian_entry(isSr = false, isZZZ = false, isBH3 = false) {
         if (isZZZ) {
             return await this.zzz_tujian();
         }
@@ -1158,25 +1171,29 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
         let list = data.js_list;
         switch (type) {
             case 'wq': {
-                // 武器与光锥的详情都只能问官方（渲染器读官方 HTML 结构），
-                // 而 nanoka 的 id 对官方接口无效（原神武器 13516 / 星铁光锥 23055 实测 404），
-                // 所以这两个分类的列表也一律用官方，保证 id 与详情同源。只有角色仍 nanoka 优先。
+                // 武器：详情只能问官方（渲染器读官方 HTML 结构），nanoka 的 id 对官方接口无效
+                // （原神武器 13516 实测 entry_page 404），所以列表也用官方、保证 id 同源。
+                // 不设 nanoka 兜底：nanoka 的武器 id 与官方根本对不上，回退只会得到查不到的结果。
                 const offWq = (await this.official_tujian(isSr))?.wq_list;
-                list = offWq?.length ? offWq : data.wq_list;
+                if (!offWq?.length) return false;
+                list = offWq;
                 break;
             }
             case 'gz': {
-                const offGz = isSr ? (await this.official_tujian(true))?.gz_list : null;
-                list = offGz?.length ? offGz : data.gz_list;
+                // 星铁光锥同理（nanoka id 23055 → 官方 content_id 8119，两套编号）。
+                const offGz = (await this.official_tujian(true))?.gz_list;
+                if (!offGz?.length) return false;
+                list = offGz;
                 break;
             }
             case 'syw':
             case 'yq': {
-                // nanoka 的 syw_list/yq_list 实际是物品列表（原石/摩拉…），不是圣遗物/遗器套装，
-                // 套装（列表与按名查询）一律以米游社官方列表为准；官方不可用时退回原列表。
-                // 官方详情接口免鉴权返回空内容，但列表条目自带 ext（套装效果表），出图与列表都够用。
+                // nanoka 的 syw_list/yq_list 实际是物品列表（原石/摩拉…），不是圣遗物/遗器套装：
+                // 套装（列表与按名查询）只认米游社官方列表，不做 nanoka 兜底。
+                // 官方列表条目自带 ext（套装效果表），出图与列表都够用（详情接口免鉴权为空，用不上）。
                 const officialList = (await this.official_tujian(isSr))?.[type === 'syw' ? 'syw_list' : 'yq_list'];
-                list = officialList?.length ? officialList : (type === 'syw' ? data.syw_list : data.yq_list);
+                if (!officialList?.length) return false;
+                list = officialList;
                 if (name) return list;
                 break;
             }
@@ -1563,23 +1580,10 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
         if (isBH3) {
             return await this.bh3_detail(id);
         }
-        // 武器/光锥（kind='weapon'）只走官方：渲染器读的是官方 HTML 结构
-        // （原神 entry_page 的 page.modules、星铁 content/info 的 content.contents），
-        // 而 nanoka 的武器/光锥 JSON 是另一套字段，喂进去会渲染失败。
-        // 角色（character）仍然 nanoka 优先：米游社的 entry_page 免鉴权会返回空 content
-        // （实测 retcode=0 但 content 是空串、ext 是 {}），这条链本来就得依赖用户 Cookie；
-        // 换到 nanoka 后连 Cookie 都不需要了。
-        if (!nanokaDown() && kind === 'character') {
-            try {
-                const data = await this.nanoka_detail(id, isSr);
-                if (data) return data;
-                logger.warn?.('[xhh][图鉴] nanoka 详情为空，回退米游社官方 Wiki');
-            } catch (error) {
-                // 仅网络/接口类失败才全局降级，代码 bug 直接抛出（见 isTransientNetError）
-                if (isTransientNetError(error)) markNanokaDown();
-                logger.error('原神/星铁 nanoka 详情访问失败，切换米游社官方 Wiki:', error);
-            }
-        }
+        // 原神/星铁详情一律走官方（免登录实测可用）：
+        //   原神 → hoyowiki entry_page（正文在 page.modules）
+        //   星铁 → sr_wiki content/info（正文在 content.rpg_new_tmp_content）
+        // 两套结构正是 gs_role_pictures / sr_role_pictures 读取的字段。
         let url = `https://api-takumi-static.mihoyo.com/hoyowiki/genshin/wapi/entry_page?app_sn=ys_obc&entry_page_id=${id}`;
         if (isSr)
             url = `https://api-static.mihoyo.com/common/blackboard/sr_wiki/v1/content/info?app_sn=sr_wiki&content_id=${id}`;
