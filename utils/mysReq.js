@@ -158,6 +158,12 @@ const failedAt = new Map()
 // 重试一次。伊涅芙上默认指向本机 WARP 桥接 http://127.0.0.1:8118（只绑回环，
 // Cookie 不出本机）；代理没配、填错或自己挂了，就按原样返回，不假装成功。
 const BLOCKED_HINT = /已阻断|阻断页面|安全威胁/
+// 最近一次「被阻断且代理没救回来」的时间戳：指令层据此把「米游社在风控我们」
+// 和「真的没有这条数据」区分开，别让用户看到「没有找到」这种误导文案。
+let lastBlockedAt = 0
+export function blockedWithin(ms = 120000) {
+  return lastBlockedAt > 0 && Date.now() - lastBlockedAt < ms
+}
 let _proxyAgent = null
 let _proxyAgentFor = ''
 function proxyUrl() {
@@ -258,7 +264,10 @@ async function retryIfBlocked(input, options, res) {
   const headers = Object.fromEntries(new Headers(res.headers || {}).entries())
   if (!BLOCKED_HINT.test(body)) return rebuildResponse(res, headers, body)
   const retried = await viaProxy(input, options, proxy)
-  return retried || rebuildResponse(res, headers, body)
+  if (retried) return retried
+  // 代理也没救回来（没配/挂了/照样被拦）：记一笔，指令层据此给用户一句真话
+  lastBlockedAt = Date.now()
+  return rebuildResponse(res, headers, body)
 }
 
 /** 用已读到的 body 快照重建响应（与缓存层 cachedResponse 同形） */
