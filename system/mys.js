@@ -261,6 +261,13 @@ function getGsDebut() {
     return map;
 }
 
+// 星铁遗器分组：隧洞遗器在前、位面饰品在后；组内保持传入顺序
+// （官方列表本身就是「新→旧」，Array.sort 稳定排序不会打乱组内次序）。
+function sortSrRelics(list = []) {
+    const band = item => (/位面饰品/.test(String(item?.ext || '')) ? 1 : 0);
+    return [...list].sort((a, b) => band(a) - band(b));
+}
+
 function sortWeaponEntries(weapons, isSr = false, isGs = false, newIds = null) {
     const entries = Object.entries(weapons || {}).filter(([, w]) => w?.zh);
     // 原神分四段，规则和角色那边一致（未上线置顶，其余按上线时间新→旧）：
@@ -990,6 +997,11 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
                 const officialList = (await this.official_tujian(isSr))?.[type === 'syw' ? 'syw_list' : 'yq_list'];
                 if (!officialList?.length) return false;
                 list = officialList;
+                // 星铁「遗器」的官方列表把隧洞遗器与位面饰品混在一起（实测 34 / 28 套），
+                // 两组内部本来就是「新→旧」，混着发出来两组交错、看不出哪套最新。
+                // 分组依据取官方条目 ext 里的套装种类标签（遗器·隧洞遗器 / 遗器·位面饰品），
+                // 稳定排序把隧洞排前面、组内保持官方顺序，不依赖 nanoka 的 id 段。
+                if (isSr && type === 'yq') list = sortSrRelics(list);
                 if (name) return list;
                 break;
             }
