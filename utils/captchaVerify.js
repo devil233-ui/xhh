@@ -12,8 +12,58 @@ const log = {
   error: (...a) => (typeof logger !== 'undefined' ? logger.error(...a) : console.error(...a)),
 }
 
+/** 熔断状态（给 #过码服务状态 用） */
+export function breakerState() {
+  const now = Date.now()
+  return {
+    open: now < openUntil,
+    fails: failStreak,
+    retryAfter: now < openUntil ? Math.ceil((openUntil - now) / 1000) : 0,
+  }
+}
+
+function breakerAllow() {
+  if (Date.now() < openUntil) return false
+  if (openUntil) {
+    // 冷却刚结束：半开，只放一个探针
+    if (halfOpenInFlight) return false
+    halfOpenInFlight = true
+  }
+  return true
+}
+
+function breakerDone(ok) {
+  halfOpenInFlight = false
+  if (ok) {
+    failStreak = 0
+    openUntil = 0
+    return
+  }
+  failStreak += 1
+  if (failStreak >= BREAKER_FAILS) {
+    openUntil = Date.now() + BREAKER_MS
+    log.mark(`[xhh][verify] 过码连续失败 ${failStreak} 次，熔断 ${BREAKER_MS / 1000} 秒，期间直接走兜底`)
+  }
+}
+
+/**
+ * 熔断：极验会成批拒收某段时间的 challenge（上游实测连续 8 轮 MissingParam("validate")
+ * 后两分钟内自愈）。没有熔断时，7 个版块各自死磕满一轮，白等一分多钟还加重风控。
+ * 口径与上游一致：连续失败 2 次即熔断 30 秒，期间请求秒回 false 交给兜底；
+ * 冷却结束走半开——只放一个探针，成功即恢复，失败再熔断一轮。
+ */
+const BREAKER_FAILS = 2
+const BREAKER_MS = 30000
+let failStreak = 0
+let openUntil = 0
+let halfOpenInFlight = false
+
 /** 本地自动过码：POST {cookie} → 服务跑全流程，返回是否成功 */
 export async function solveByLocalService({ cookie, autoVerifyAddr, clientType = '', deviceId = '', deviceFp = '', challengeOut = null }) {
+  if (!breakerAllow()) {
+    log.mark(`[xhh][verify] 过码服务熔断中（剩 ${breakerState().retryAfter} 秒），本次跳过`)
+    return false
+  }
   try {
     const payload = { cookie }
     // App 端形态（clientType=2）用于 POST 类接口的过码；过码须与调用方同一套身份
@@ -30,12 +80,15 @@ export async function solveByLocalService({ cookie, autoVerifyAddr, clientType =
       log.mark(`[xhh][verify] 本地服务自动过码成功（第 ${res.data.round} 轮）`)
       // POST 类接口重发时要把米游社颁的 challenge 当 x-rpc-challenge 头带上
       if (challengeOut) challengeOut.challenge = res.data.challenge || ''
+      breakerDone(true)
       return true
     }
     log.mark(`[xhh][verify] 本地服务未过码: ${JSON.stringify(res).slice(0, 120)}`)
+    breakerDone(false)
     return false
   } catch (err) {
     log.error(`[xhh][verify] 本地服务不可用: ${err?.message}`)
+    breakerDone(false)
     return false
   }
 }
@@ -44,6 +97,10 @@ export async function solveByLocalService({ cookie, autoVerifyAddr, clientType =
 export async function solveBatchByLocalService(cookies, autoVerifyAddr) {
   const n = cookies.length
   if (!autoVerifyAddr || !n) return new Array(n).fill(false)
+  if (!breakerAllow()) {
+    log.mark(`[xhh][verify] 过码服务熔断中（剩 ${breakerState().retryAfter} 秒），批量本次跳过`)
+    return new Array(n).fill(false)
+  }
   try {
     const res = await fetch(autoVerifyAddr, {
       method: 'POST',
@@ -58,9 +115,11 @@ export async function solveBatchByLocalService(cookies, autoVerifyAddr) {
     }
     const okCount = results.filter(r => r?.ok).length
     log.mark(`[xhh][verify] 批量自动过码完成：${okCount}/${n} 成功`)
+    breakerDone(okCount > 0)
     return results.map(r => !!r?.ok)
   } catch (err) {
     log.error(`[xhh][verify] 批量过码服务不可用: ${err?.message}`)
+    breakerDone(false)
     return new Array(n).fill(false)
   }
 }
