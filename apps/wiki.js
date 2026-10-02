@@ -474,7 +474,22 @@ export class Wiki extends plugin {
     return '';
   }
 
+  // 图鉴入口包装，负责「指令传递」：图鉴功能一旦触发（出图）就 return false 把指令交下去，
+  // 让同样认这条指令的插件也回一份——与消息里有没有「图鉴」二字无关（#菲林斯、*真珠、xx专武 同理）。
+  // 未命中、不属于图鉴的命令词、内部异常，同样 return false：图鉴永不消费消息、不吞指令。
+  // 本插件的两条规则会匹配同一条消息，用 e 上的标记保证只真正处理一次。
   async illustrated_book(e) {
+    if (e._xhhBookDone) return false;
+    e._xhhBookDone = true;
+    try {
+      await this.illustratedBookImpl(e);
+    } catch (err) {
+      logger.error('[xhh][图鉴] 处理异常，放行给后续插件:', err);
+    }
+    return false;
+  }
+
+  async illustratedBookImpl(e) {
     if (!config().wiki) return false;
     // 游戏前缀（全角半角都认）：# / ＃ = 原神，* / ＊ / ※ = 星铁，% / ％ = 绝区零，! / ！ = 崩三。
     // 消息里写明游戏名（星铁 / 绝区零 / 崩坏3…）时以它为准（loader 也会把 *x / %x 重写成 #星铁x / #绝区零x）。
@@ -506,7 +521,7 @@ export class Wiki extends plugin {
     //    摩拉插件等的指令，图鉴不能先探一遍把它们吃掉。
     // 2) 「图鉴」二字不在首尾（上面已剥掉一个首/尾的「图鉴」，仍有残留说明它夹在中间，
     //    如 #角色图鉴列表；文档化的「图鉴xx」前缀写法不受影响）
-    const CMD_WORD = '强制更新|更新|帮助|搜索|刷新|查询|设置|列表|统计|状态|菜单|命令|指令|说明|教程|用法|攻略|天赋|命座'
+    const CMD_WORD = '强制更新|更新|帮助|搜索|刷新|查询|设置|列表|统计|状态|菜单|命令|指令|说明|教程|用法|攻略|天赋|命座|面板|详情|资料|评分|语音|视频|头像|名片|卡池|抽卡|别名|昵称'
     if (new RegExp(`^(?:${CMD_WORD})`).test(name) || new RegExp(`(?:${CMD_WORD})$`).test(name)) return false;
     if (name.includes('图鉴')) return false;
     // 怪物/BOSS 图鉴交给 monster 插件，避免把「绝区零怪物图鉴」当成角色去查
@@ -572,10 +587,10 @@ export class Wiki extends plugin {
       return this.list(e, name, isSr, isZZZ, isBH3);
     }
     if (config().debug) logger.mark(`[xhh] 图鉴未命中: name=「${name}」 isSr=${isSr} isZZZ=${isZZZ} isBH3=${isBH3}`);
-    // # 前缀已在上面静默放行。这里只提示没有游戏前缀、也不是列表词的未命中。
-    if (!/^[＃#＊*※％%！!]/.test(cmd) && name.length >= 2) {
+    // 显式写了「图鉴」却查不到时提示一次（多半是名字打错）；隐式调用静默。
+    // 两种情况都 return false：指令继续交给后续插件，不在图鉴这里被吃掉。
+    if (/图鉴/.test(cmd) && name.length >= 2) {
       await e.reply(`没有找到「${name}」的图鉴数据。\n可加游戏前缀重试：# 原神 / * 星铁 / % 绝区零 / ! 崩三，例如「*${name}图鉴」，或检查名称是否正确。`);
-      return true;
     }
     return false;
   }
