@@ -590,14 +590,13 @@ export class Wiki extends plugin {
     if (config().debug) logger.mark(`[xhh] 图鉴未命中: name=「${name}」 isSr=${isSr} isZZZ=${isZZZ} isBH3=${isBH3}`);
     // 显式写了「图鉴」却查不到时提示一次（多半是名字打错）；隐式调用静默。
     // 两种情况都 return false：指令继续交给后续插件，不在图鉴这里被吃掉。
-    if (/图鉴/.test(cmd) && name.length >= 2) {
-      // 米游社接口刚被风控拦下（连本机代理都没救回来）时不能报「没有找到」——
-      // 那是接口没通，不是数据不存在，报错了会让人白改名字。
-      if (blockedWithin()) {
-        await e.reply(`米游社接口被风控拦截（已自动尝试换线路），「${name}」暂时查不到，请一分钟后再试。`);
-      } else {
-        await e.reply(`没有找到「${name}」的图鉴数据。\n可加游戏前缀重试：# 原神 / * 星铁 / % 绝区零 / ! 崩三，例如「*${name}图鉴」，或检查名称是否正确。`);
-      }
+    // 风控是全局故障：隐式调用（#角色名 / *光锥名 这种没写「图鉴」的）也要说一句，
+    // 不能因为「按指令传递规则静默放行」就把它一起咽下去。
+    if (blockedWithin() && name.length >= 2) {
+      await e.reply(`米游社接口被风控拦截（已自动尝试换线路），「${name}」暂时查不到，请一分钟后再试。`);
+    } else if (/图鉴/.test(cmd) && name.length >= 2) {
+      // 没被风控、纯属查不到时才报「没有找到」——报错了会让人白改名字。
+      await e.reply(`没有找到「${name}」的图鉴数据。\n可加游戏前缀重试：# 原神 / * 星铁 / % 绝区零 / ! 崩三，例如「*${name}图鉴」，或检查名称是否正确。`);
     }
     return false;
   }
