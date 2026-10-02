@@ -302,3 +302,9 @@ sr_strategy: false
 sr_strategy_priority: -99
 auto_verify_addr: ''
 manual_gt_remote_addr: ''
+
+# 米游社风控兜底代理：直连被米游社拦下（不给错误码，而是一整页 HTML「已阻断」，
+# 实测 HTTP 405）时，改走这个 HTTP 代理重试一次。
+# 默认是本机 WARP 桥接（warp-http-bridge，只监听 127.0.0.1:8118），Cookie 不出本机。
+# 留空 = 不启用；填错/代理挂了会如实按查询失败处理，不会假装成功。
+mhy_proxy: 'http://127.0.0.1:8118'
