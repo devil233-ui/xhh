@@ -103,6 +103,31 @@ function atlasResolve(raw = '', game = 'gs', kind = 'char') {
   return raw ? atlasAliasMap(game, kind)[normAlias(raw)] || '' : '';
 }
 
+// 兼容 miao-plugin 的用户别名词表 config/roleName.yaml（由别名设置类插件写入，miao 侧被 gitignore）。
+// 结构：{ gs: { 正式名: [别名…] }, sr: { … } }。
+// 为什么不直接用 miao 的 Character.get：用户别名是运行时 addAlias 注入 meta 的，而 miao 重载角色表
+// （components/Reload.js → Meta.resetCreate(game,'char')）只从 resources 重建，注入的别名会被清掉。
+// 实测 miao 更新后「猫」定位不到桑多涅，而 miao 自带别名表里的「木偶」照常命中——所以直接读文件。
+const MIAO_ROLE_NAME_FILE = './plugins/miao-plugin/config/roleName.yaml';
+function miaoUserAliasResolve(raw = '', game = 'gs') {
+  if (!raw) return '';
+  try {
+    if (!fs.existsSync(MIAO_ROLE_NAME_FILE)) return '';
+    const list = (yaml.get(MIAO_ROLE_NAME_FILE) || {})[game === 'sr' ? 'sr' : 'gs'];
+    if (!list || typeof list !== 'object') return '';
+    const want = normAlias(raw);
+    for (const [formal, aliases] of Object.entries(list)) {
+      if (normAlias(formal) === want) return formal;
+      for (const a of Array.isArray(aliases) ? aliases : [aliases]) {
+        if (normAlias(a) === want) return formal;
+      }
+    }
+  } catch (err) {
+    if (config().debug) logger.mark(`[xhh] 读取 miao 用户别名表失败: ${err?.message || err}`);
+  }
+  return '';
+}
+
 // 兼容 ZZZ-Plugin（ZZZure/ZZZ-Plugin）的代理人别名表：
 // 它的别名同样是「正式名: [别名列表]」，但存在 config/alias.yaml（用户自定义）与 defSet/alias.yaml（默认）两处，
 // 且会随版本更新补充新角色/英文别名。这里读它做补充，本地表优先。
@@ -1430,9 +1455,15 @@ export class Wiki extends plugin {
     // 本地 yaml 没命中时，用喵喵插件的角色别名表兜底（仅原神/星铁，ZZZ/BH3 走各自流程）
     let rname = Object.keys(role_name).includes(name) ? name : '';
     if (!rname && !isZZZ && !isBH3) {
-      const miao = await miaoResolve(name, 'char', isSr ? 'sr' : 'gs');
-      if (miao) rname = miao;
-      if (!rname) rname = atlasResolve(name, isSr ? 'sr' : 'gs', 'char');
+      const game = isSr ? 'sr' : 'gs';
+      // 先查用户自己维护的别名词表（roleName.yaml 的「猫 → 桑多涅」这类），再做 miao / Atlas 兜底：
+      // miao 重载角色表后其内存里的用户别名会丢，只靠 Character.get 会漏。
+      rname = miaoUserAliasResolve(name, game);
+      if (!rname) {
+        const miao = await miaoResolve(name, 'char', game);
+        if (miao) rname = miao;
+      }
+      if (!rname) rname = atlasResolve(name, game, 'char');
       // 仍没有时（新角色，各别名词表滞后）：原名直接交给米游社图鉴列表精确匹配，
       // 命中即可出图，免维护本地表
       if (!rname) {
