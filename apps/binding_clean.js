@@ -182,6 +182,9 @@ function judgeFiles(items, invalid) {
     return { hits, unknown };
 }
 
+/** Bot 是全局，稳妥起见按仓库惯例兜底 */
+const getBot = () => globalThis.Bot || (typeof Bot !== 'undefined' ? Bot : null);
+
 // 重入锁放模块级：Yunzai 每条消息都会 new 一个插件实例，实例字段存不住
 let orphanRunning = false;
 
