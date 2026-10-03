@@ -365,12 +365,12 @@ export class BindingClean extends plugin {
 
                 // 离群绑定：绑了 CK/stoken，但不在任何「有 bot 在场的群」里
                 {
-                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)(列表|体检|检查)?$',
+                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)\\s*(列表|体检|检查)?$',
                     fnc: 'scanOrphan',
                     permission: 'master',
                 },
                 {
-                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)\s*(确认|确定|yes|ok)?$',
+                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)\\s*(确认|确定|yes|ok)?$',
                     fnc: 'cleanOrphan',
                     permission: 'master',
                 },
