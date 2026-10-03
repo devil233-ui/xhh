@@ -206,16 +206,71 @@ function allBots() {
     return bots;
 }
 
-/** 所有 bot 所在群的并集：gid -> group 对象 */
-function allGroups() {
+/**
+ * 所有 bot 所在群的并集：gid -> group 对象（拿不到对象就存 null，后面靠 pickGroup 补）。
+ *
+ * 注意：ICQQ 系适配器启动时会把 Bot.gl 填满，但 **OneBot/NapCat 下 gl 常常是空的**
+ * （实测本机 OneBotv11 上 allGroups() 返回 0 个群 —— 那样所有绑定者都会被当成
+ * 「不在任何群」，非常危险）。所以这里分三层：gl → 适配器的 getGroupList/getGroupMap
+ * → sendApi('get_group_list')。任一层的键都可能是 `${uin}-${gid}` 或纯 gid，统一取尾部数字。
+ */
+async function allGroups() {
     const map = new Map();
-    for (const b of allBots()) {
-        for (const [gid, group] of b.gl || new Map()) {
-            const key = String(gid);
-            if (!map.has(key)) map.set(key, group);
+    const add = (key, group) => {
+        const digits = String(key).match(/(\d{5,12})/g);
+        const gid = digits ? digits[digits.length - 1] : '';
+        if (!gid) return;
+        if (!map.has(gid)) map.set(gid, group || null);
+        else if (!map.get(gid) && group) map.set(gid, group);
+    };
+    for (const b of allBots()) for (const [gid, group] of b.gl || new Map()) add(gid, group);
+
+    if (!map.size) {
+        for (const b of allBots()) {
+            try {
+                const gl = b.getGroupMap?.() || b.getGroupList?.();
+                for (const [gid, group] of gl || new Map()) add(gid, group);
+            } catch {
+                /* 换下一层 */
+            }
+        }
+    }
+    if (!map.size) {
+        for (const b of allBots()) {
+            try {
+                const res = await b.sendApi?.('get_group_list', {});
+                for (const g of res?.data || res || []) {
+                    const gid = g?.group_id ?? g?.groupId ?? g?.id ?? g;
+                    if (gid) {
+                        let group = null;
+                        try {
+                            group = b.pickGroup?.(Number(gid)) || null;
+                        } catch {
+                            /* 没对象就按 gid 走 sendApi */
+                        }
+                        add(gid, group);
+                    }
+                }
+            } catch {
+                /* 拉不到就算了，交由调用方报错 */
+            }
         }
     }
     return map;
+}
+
+/** 该 gid 的 group 对象（拿不到就用 pickGroup 补一个） */
+function groupOf(gid, group) {
+    if (group) return group;
+    for (const b of allBots()) {
+        try {
+            const g = b.pickGroup?.(Number(gid));
+            if (g) return g;
+        } catch {
+            /* 试下一个 */
+        }
+    }
+    return null;
 }
 
 /**
@@ -225,14 +280,15 @@ function allGroups() {
  * 调用方必须如实说明 —— 否则那些群的成员会被当成「不在任何群」而误删。
  */
 async function collectGroupMembers() {
-    const list = [...allGroups().entries()];
+    const list = [...(await allGroups()).entries()];
     const members = new Set();
     let ok = 0;
     let failed = 0;
     let i = 0;
     const worker = async () => {
         while (i < list.length) {
-            const [gid, group] = list[i++];
+            const [gid, groupOrNull] = list[i++];
+            const group = groupOf(gid, groupOrNull);
             let arr = [];
             try {
                 if (group?.getMemberArray) arr = await group.getMemberArray();
@@ -406,6 +462,14 @@ export class BindingClean extends plugin {
         try {
             await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
             const { members, groups, ok, failed } = await collectGroupMembers();
+            if (!groups || !members.size) {
+                logger.error(`[xhh][离群] 群 ${groups} 个、成员 ${members.size} 人，无法判断离群，已中止（不动任何文件）`);
+                return e.reply(
+                    `没取到群或群成员（群 ${groups} 个，成员 ${members.size} 人），无法判断谁离群，已中止，未动任何文件。\n`
+                        + '可能是适配器拿不到群列表（OneBot/NapCat 下 gl 常为空），请换个能取群列表的适配器再试。',
+                    true,
+                );
+            }
             const all = collectAll();
             const orphan = all.filter(a => !members.has(String(a.qq)));
             const lines = [
@@ -442,6 +506,14 @@ export class BindingClean extends plugin {
         try {
             await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
             const { members, groups, ok, failed } = await collectGroupMembers();
+            if (!groups || !members.size) {
+                logger.error(`[xhh][离群] 群 ${groups} 个、成员 ${members.size} 人，无法判断离群，已中止（未删任何文件）`);
+                return e.reply(
+                    `没取到群或群成员（群 ${groups} 个，成员 ${members.size} 人），无法判断谁离群，已中止，**未删任何文件**。\n`
+                        + '可能是适配器拿不到群列表，请换个能取群列表的适配器再试。',
+                    true,
+                );
+            }
             const orphan = collectAll().filter(a => !members.has(String(a.qq)));
             if (!orphan.length) return e.reply('没有离群绑定，未改动任何文件。', true);
             const done = [];
