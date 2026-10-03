@@ -214,7 +214,7 @@ function allBots() {
  * 「不在任何群」，非常危险）。所以这里分三层：gl → 适配器的 getGroupList/getGroupMap
  * → sendApi('get_group_list')。任一层的键都可能是 `${uin}-${gid}` 或纯 gid，统一取尾部数字。
  */
-async function allGroups() {
+async function allGroups(e = null) {
     const map = new Map();
     const add = (key, group) => {
         const digits = String(key).match(/(\d{5,12})/g);
@@ -223,6 +223,19 @@ async function allGroups() {
         if (!map.has(gid)) map.set(gid, group || null);
         else if (!map.get(gid) && group) map.set(gid, group);
     };
+    // 第一层：本条消息所属的适配器 —— 它一定连着，且它的群列表就是「bot 实际在的群」
+    try {
+        const bot = e?.bot;
+        const gl = bot?.getGroupMap?.() || bot?.getGroupList?.();
+        for (const [gid, group] of gl || new Map()) add(gid, group);
+        if (!map.size && bot?.sendApi) {
+            const res = await bot.sendApi('get_group_list', {});
+            for (const g of res?.data || res || []) add(g?.group_id ?? g?.groupId ?? g?.id ?? g, null);
+        }
+    } catch {
+        /* 换下一层 */
+    }
+
     for (const b of allBots()) for (const [gid, group] of b.gl || new Map()) add(gid, group);
 
     if (!map.size) {
@@ -260,8 +273,14 @@ async function allGroups() {
 }
 
 /** 该 gid 的 group 对象（拿不到就用 pickGroup 补一个） */
-function groupOf(gid, group) {
+function groupOf(gid, group, e = null) {
     if (group) return group;
+    try {
+        const g = e?.bot?.pickGroup?.(Number(gid));
+        if (g) return g;
+    } catch {
+        /* 试下一个 */
+    }
     for (const b of allBots()) {
         try {
             const g = b.pickGroup?.(Number(gid));
@@ -279,8 +298,8 @@ function groupOf(gid, group) {
  * 群对象方法拿不到就退回 sendApi 实时拉。拉不到成员的群计入 failed，
  * 调用方必须如实说明 —— 否则那些群的成员会被当成「不在任何群」而误删。
  */
-async function collectGroupMembers() {
-    const list = [...(await allGroups()).entries()];
+async function collectGroupMembers(e = null) {
+    const list = [...(await allGroups(e)).entries()];
     const members = new Set();
     let ok = 0;
     let failed = 0;
@@ -288,7 +307,7 @@ async function collectGroupMembers() {
     const worker = async () => {
         while (i < list.length) {
             const [gid, groupOrNull] = list[i++];
-            const group = groupOf(gid, groupOrNull);
+            const group = groupOf(gid, groupOrNull, e);
             let arr = [];
             try {
                 if (group?.getMemberArray) arr = await group.getMemberArray();
@@ -461,7 +480,7 @@ export class BindingClean extends plugin {
         orphanRunning = true;
         try {
             await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
-            const { members, groups, ok, failed } = await collectGroupMembers();
+            const { members, groups, ok, failed } = await collectGroupMembers(e);
             if (!groups || !members.size) {
                 logger.error(`[xhh][离群] 群 ${groups} 个、成员 ${members.size} 人，无法判断离群，已中止（不动任何文件）`);
                 return e.reply(
@@ -505,7 +524,7 @@ export class BindingClean extends plugin {
         orphanRunning = true;
         try {
             await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
-            const { members, groups, ok, failed } = await collectGroupMembers();
+            const { members, groups, ok, failed } = await collectGroupMembers(e);
             if (!groups || !members.size) {
                 logger.error(`[xhh][离群] 群 ${groups} 个、成员 ${members.size} 人，无法判断离群，已中止（未删任何文件）`);
                 return e.reply(
