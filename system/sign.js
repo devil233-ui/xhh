@@ -67,6 +67,26 @@ function getStokenData(qq) {
     }
 }
 
+/**
+ * 记下被判失效的通行证，供「#清理无效绑定」删除条目用。
+ * 只认社区签到接口真实返回的 -100/-101/10001，不另造探针 ——
+ * getCookieAccountInfoBySToken 与 getUserMissionsState 对当天签到成功的账号也一律回 -100，
+ * 拿它们的返回值当判据会把全部绑定误删。
+ */
+const INVALID_FILE = './plugins/xhh/data/invalid_stuid.json';
+function markInvalid(account, rows) {
+    if (!rows.some(r => /登录失效/.test(r.tip || ''))) return;
+    const stuid = String(account?.stuid || '');
+    if (!/^\d{5,}$/.test(stuid)) return;
+    try {
+        const old = fs.existsSync(INVALID_FILE) ? JSON.parse(fs.readFileSync(INVALID_FILE, 'utf8')) : {};
+        old[stuid] = { last: new Date().toISOString().slice(0, 19).replace('T', ' ') };
+        fs.writeFileSync(INVALID_FILE, JSON.stringify(old, null, 2));
+    } catch (err) {
+        logger.error(`[xhh][bbs_sign] 记录失效通行证失败: ${err.message}`);
+    }
+}
+
 function isBh3Region(region = '') {
     return ['android01', 'ios01', 'pc01', 'bb01', 'yyb01', 'hun01', 'hun02'].includes(String(region || ''));
 }
@@ -674,6 +694,8 @@ async function bbsSignAccount(e, account, lines) {
         }
         await jitter(800, 1600);
     }
+    // 有「登录失效」就落盘留档：陈旧的绑定靠它才能被 #清理无效绑定 认出来
+    markInvalid(account, rows);
     const ok = rows.length > 0 && rows.every(r => /签到成功|今日已签/.test(r.tip));
     if (ok) {
         try {
