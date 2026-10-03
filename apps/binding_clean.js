@@ -182,6 +182,86 @@ function judgeFiles(items, invalid) {
     return { hits, unknown };
 }
 
+// 重入锁放模块级：Yunzai 每条消息都会 new 一个插件实例，实例字段存不住
+let orphanRunning = false;
+
+/**
+ * 所有 bot 实例（多 bot 时逐个都算）。主 Bot 与 Bot.bots 里可能重复，按对象引用去重。
+ */
+function allBots() {
+    const bots = [];
+    const seen = new Set();
+    const push = b => {
+        if (!b || !b.gl || seen.has(b)) return;
+        seen.add(b);
+        bots.push(b);
+    };
+    push(getBot());
+    for (const b of Object.values(getBot()?.bots || {})) push(b);
+    return bots;
+}
+
+/** 所有 bot 所在群的并集：gid -> group 对象 */
+function allGroups() {
+    const map = new Map();
+    for (const b of allBots()) {
+        for (const [gid, group] of b.gl || new Map()) {
+            const key = String(gid);
+            if (!map.has(key)) map.set(key, group);
+        }
+    }
+    return map;
+}
+
+/**
+ * 收集「有 bot 在场的所有群」的成员 QQ 集合。
+ * 一个群拉一次成员列表（而不是「每个用户 × 每个群」问一次），并发 3；
+ * 群对象方法拿不到就退回 sendApi 实时拉。拉不到成员的群计入 failed，
+ * 调用方必须如实说明 —— 否则那些群的成员会被当成「不在任何群」而误删。
+ */
+async function collectGroupMembers() {
+    const list = [...allGroups().entries()];
+    const members = new Set();
+    let ok = 0;
+    let failed = 0;
+    let i = 0;
+    const worker = async () => {
+        while (i < list.length) {
+            const [gid, group] = list[i++];
+            let arr = [];
+            try {
+                if (group?.getMemberArray) arr = await group.getMemberArray();
+                if (!arr?.length && group?.getMemberMap) arr = await group.getMemberMap(true);
+                if (!arr?.length && group?.getMemberList) arr = await group.getMemberList();
+            } catch {
+                /* 换 sendApi */
+            }
+            if (!arr?.length) {
+                try {
+                    const bot = group?.bot || getBot();
+                    const res = await bot?.sendApi?.('get_group_member_list', { group_id: Number(gid), no_cache: true });
+                    arr = res?.data || res || [];
+                } catch {
+                    /* 拉不到就计数 */
+                }
+            }
+            const qqs = (Array.isArray(arr) ? arr : [])
+                .map(m => String(m?.user_id ?? m?.userId ?? m ?? '').trim())
+                .filter(v => /^\d{5,12}$/.test(v));
+            if (qqs.length) {
+                ok++;
+                qqs.forEach(q => members.add(q));
+            } else {
+                failed++;
+            }
+            await sleep(150);
+        }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    return { members, groups: list.length, ok, failed };
+}
+
+
 export class BindingClean extends plugin {
     constructor(e) {
         super({
@@ -200,6 +280,18 @@ export class BindingClean extends plugin {
                 {
                     reg: '^#*(小花火|xhh)*(清理|清除|删除)(无效|失效|过期|无用)(绑定|账号|帐号)\\s*(确认|确定|yes|ok)?$',
                     fnc: 'clean',
+                    permission: 'master',
+                },
+
+                // 离群绑定：绑了 CK/stoken，但不在任何「有 bot 在场的群」里
+                {
+                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)(列表|体检|检查)?$',
+                    fnc: 'scanOrphan',
+                    permission: 'master',
+                },
+                {
+                    reg: '^#*(小花火|xhh)*(清理|清除|删除)(离群|不在群|退群|离会)(绑定|账号|帐号|CK|ck)\s*(确认|确定|yes|ok)?$',
+                    fnc: 'cleanOrphan',
                     permission: 'master',
                 },
             ],
@@ -297,4 +389,94 @@ export class BindingClean extends plugin {
         await e.reply(lines.join('\n'), true);
         return true;
     }
+
+    /**
+     * 离群绑定体检：绑定了 CK/stoken、但不在「任何有 bot 在场的群」里。
+     * 群集合是**所有 bot 所在群的并集**（多 bot 时按并集算：只在其中一个 bot 的群里也算在群里）。
+     * 只列不动。
+     */
+    async scanOrphan(e) {
+        if (orphanRunning) return e.reply('上一次离群任务还在跑，稍等一下…', true);
+        orphanRunning = true;
+        try {
+            await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
+            const { members, groups, ok, failed } = await collectGroupMembers();
+            const all = collectAll();
+            const orphan = all.filter(a => !members.has(String(a.qq)));
+            const lines = [
+                '离群绑定体检（未改动任何文件）',
+                `  有 bot 在场的群：${groups} 个（成功取到成员 ${ok} 个，取不到 ${failed} 个）`,
+                `  群成员去重后 ${members.size} 人；已绑定 CK/stoken 的 ${all.length} 人，其中不在任何群里的 ${orphan.length} 人`,
+            ];
+            if (failed) lines.push(`  ⚠️ 有 ${failed} 个群没取到成员，这些群的成员可能被误判成离群，请先确认。`);
+            if (!orphan.length) {
+                lines.push('', '没有离群绑定。');
+            } else {
+                lines.push('', '离群的人（来源 / 账号数 / stuid）：');
+                for (const a of orphan.slice(0, 20)) {
+                    const src = [a.fromXh && '小花火', a.fromXy && '逍遥'].filter(Boolean).join('+');
+                    lines.push(`  QQ ${a.qq}　${src}　${a.accounts} 个账号　${[...a.stuids].slice(0, 3).map(maskStuid).join(' ')}`);
+                }
+                if (orphan.length > 20) lines.push(`  …还有 ${orphan.length - 20} 人`);
+                lines.push('', '要清理请发「#清理离群绑定 确认」：会删掉这些人在小花火与逍遥两侧的绑定文件，各自另存 .bak。');
+            }
+            await e.reply(await makeForwardMsg(e, [lines.join('\n')], '离群绑定体检'), true);
+            return true;
+        } finally {
+            orphanRunning = false;
+        }
+    }
+
+    /** 离群绑定清理：删两个来源的整份绑定（该人的所有 CK/stoken），删前另存 .bak */
+    async cleanOrphan(e) {
+        if (!/确认|确定|yes|ok/i.test(e.msg)) return this.scanOrphan(e);
+        if (orphanRunning) return e.reply('上一次离群任务还在跑，稍等一下…', true);
+        orphanRunning = true;
+        try {
+            await e.reply('正在收集各群成员（多 bot 取并集），群多时要等一会儿…', true);
+            const { members, groups, ok, failed } = await collectGroupMembers();
+            const orphan = collectAll().filter(a => !members.has(String(a.qq)));
+            if (!orphan.length) return e.reply('没有离群绑定，未改动任何文件。', true);
+            const done = [];
+            const failedFiles = [];
+            for (const a of orphan) {
+                for (const { tag, dir } of FILE_SOURCES) {
+                    const file = `${dir}/${a.qq}.yaml`;
+                    if (!fs.existsSync(file)) continue;
+                    try {
+                        fs.writeFileSync(`${file}.bak`, fs.readFileSync(file));
+                        fs.unlinkSync(file);
+                        done.push(`${tag}　QQ ${a.qq}`);
+                    } catch (err) {
+                        failedFiles.push(`${tag}　QQ ${a.qq}（${err.message}）`);
+                    }
+                }
+                try {
+                    const invalid = readInvalid();
+                    let hit = false;
+                    for (const s2 of a.stuids) {
+                        if (invalid[s2]) {
+                            delete invalid[s2];
+                            hit = true;
+                        }
+                    }
+                    if (hit) fs.writeFileSync(INVALID_FILE, JSON.stringify(invalid, null, 2));
+                } catch {
+                    /* 留档清理失败不影响主体 */
+                }
+                await sleep(80);
+            }
+            const out = [
+                `离群绑定清理完成：${orphan.length} 人`,
+                `（群 ${groups} 个，取到成员 ${ok} 个${failed ? `，取不到 ${failed} 个` : ''}）`,
+            ];
+            out.push(...done.map(x => '  · 已删 ' + x));
+            if (failedFiles.length) out.push('未处理：', ...failedFiles.map(x => '  · ' + x));
+            out.push('原文件都已另存 .bak（同目录同名 + .bak），需要恢复就把 .bak 改回原名。');
+            return e.reply(out.join('\n'), true);
+        } finally {
+            orphanRunning = false;
+        }
+    }
+
 }
