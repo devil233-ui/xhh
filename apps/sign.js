@@ -10,6 +10,17 @@ import {
     pluginPriority
 } from '#xhh';
 import lodash from 'lodash';
+// 「社区签到该跑了」的标记：cron 入口先置上，scheduled_bbs_sign 消费。
+// 见定时任务里关于顺序 await 拖垮社区签到的注释。
+let bbsDue = false
+function markBbsDue() {
+    bbsDue = true
+}
+function consumeBbsDue() {
+    const v = bbsDue
+    bbsDue = false
+    return v
+}
 import Runtime from '../../../lib/plugins/runtime.js';
 
 let signing = false;
@@ -118,6 +129,15 @@ export class Sign extends plugin {
             cron: '0 * * * * *', //每分钟检查一次，实际执行时间由 sign.yaml 的 sign_hour/sign_minute 控制
             name: '[小花火]米游社签到',
             fnc: async () => {
+                // 原来是在 scheduled_bbs_sign 里实时比对 getMinutes()。而这里是顺序
+                // await：游戏签到先跑，跑完才轮到社区签到。两个任务配了同一分钟时，
+                // 游戏签到一旦耗时（被风控时更慢，上游实测能跑 2 分 38 秒），等轮到社区
+                // 签到时那一分钟早就过了，于是它静默 return，连日志都不打 ——
+                // 表现就是「开关开着、却什么都没发生」，而日志里看不出原因。
+                //
+                // 所以在任务开始、两个签到都还没跑的时候先把标记置上，
+                // 之后无论游戏签到跑多久，社区签到都会消费这个标记执行一次。
+                markBbsDue();
                 await this.scheduled_sign();
                 await this.scheduled_bbs_sign();
             },
@@ -253,7 +273,9 @@ export class Sign extends plugin {
     async scheduled_bbs_sign() {
         const data = yaml.get('./plugins/xhh/config/sign.yaml') || {};
         if (!data.bbs_zd_sign || !data.bbs_sign || typeof data.bbs_sign !== 'object') return false;
-        if (!isSignTime(data, 'bbs_sign_hour', 'bbs_sign_minute', 3, 30)) return false;
+        // 到点标记（markBbsDue）在 cron 入口已置上：到点后即使游戏签到把这一分钟跑完，
+        // 这里也能靠标记执行。标记消费掉之后才回到「实时比对分钟」的判断。
+        if (!consumeBbsDue() && !isSignTime(data, 'bbs_sign_hour', 'bbs_sign_minute', 3, 30)) return false;
         if (signing || bbsSigning) return false;
         bbsSigning = true;
         try {
@@ -266,7 +288,7 @@ export class Sign extends plugin {
             }
             for (const group of groups) {
                 const result = await BbsAutoSign(data.bbs_sign[group]);
-                await sendBbsAutoResult(group, result);
+                await sendBbsAutoResult(group, result, data);
                 await sleep(1000);
             }
         } catch (error) {

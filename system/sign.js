@@ -770,20 +770,27 @@ async function BbsAutoSign(qqs = []) {
     const users = [...new Set((qqs || []).map(v => String(v).trim()).filter(Boolean))];
     const allLines = ['米游社社区自动签到'];
     const allMsgs = [];
+    const failed = [];
     for (const qq of users) {
         const result = await bbsSignForUser(qq);
-        allLines.push(...result.lines);
+        // 与游戏自动签到的 sbai_qqs 同一判据：全部版块都成功才算过。
+        // 每个通行证一张卡，卡片 tip 是「N/M 完成 · …」，按它取反即可。
+        const body = result.lines.slice(1);
+        const ok = body.length > 0 && body.every(l => /签到成功|今日已签/.test(l));
+        if (!ok) failed.push(qq);
+        allLines.push(...body);
         allMsgs.push(...result.msgs.map(m => ({ ...m, title: `QQ ${qq} · ${m.title}` })));
         await jitter(1500, 3000);
     }
-    return { msgs: allMsgs, lines: allLines };
+    return { msgs: allMsgs, lines: allLines, failed };
 }
 
 // 定时任务里没有 e，只能主动 sendMsg，而 e.reply 的 recallMsg 选项在这里用不上，
 // 所以自己拿 message_id 定时撤回（社区自动签到每天每群一条，不撤会一直刷屏）。
 const BBS_AUTO_RECALL_SEC = 60;
 
-async function sendBbsAutoResult(group, result) {
+async function sendBbsAutoResult(group, result, cfg = {}) {
+    const { failed = [] } = result || {};
     const text = (result?.lines || []).join('\n') || '米游社社区自动签到完成';
     const target = Bot.pickGroup(Number(group));
     let sent;
@@ -811,7 +818,21 @@ async function sendBbsAutoResult(group, result) {
     }
     sent = await target.sendMsg(text);
     scheduleGroupRecall(group, sent, BBS_AUTO_RECALL_SEC);
-    return sent;
+    return remindFailed(target, failed, cfg);
+}
+
+/**
+ * 与游戏自动签到一致：失败的人艾特一下，便于本人立刻看到并处理。
+ * 沿用游戏侧的 config.sbai 开关；失败的判定由 BbsAutoSign 给出。
+ */
+function remindFailed(target, failed, cfg = {}) {
+    if (!cfg.sbai || !failed.length) return null;
+    try {
+        return target.sendMsg(failed.map(v => segment.at(v)));
+    } catch (err) {
+        logger.error(`[xhh][bbs_auto] @失败成员出错: ${err.message}`);
+        return null;
+    }
 }
 
 // 结果汇总：全失败时给出可操作的排查提示，不再 60s 就把消息撤掉
@@ -848,7 +869,14 @@ function bbsCardItem(account, rows) {
         tip = rows.every(r => /今日已签/.test(r.tip)) ? '今日已签' : '签到成功';
     } else {
         const okCount = rows.length - failed.length;
-        tip = `${okCount}/${rows.length} 完成 · ${failed.map(r => `${r.name}${r.tip}`).join(' ')}`;
+        // ck 一失效时 7 个版块报同一句，直接拼出来会重复 7 遍刷屏。
+        // 按 tip 分组：全部同一种就收成「N 个版块均为 …」，否则「原神崩三：…」这样并起来。
+        const byTip = {};
+        for (const r of failed) (byTip[r.tip] = byTip[r.tip] || []).push(r.name);
+        const tail = Object.entries(byTip)
+            .map(([t, names]) => (names.length === failed.length ? `${names.length} 个版块均为 ${t}` : `${names.join('、')}：${t}`))
+            .join('  ');
+        tip = `${okCount}/${rows.length} 完成 · ${tail}`;
     }
     return {
         title: `通行证 ${stuid}`,
