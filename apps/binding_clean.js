@@ -414,6 +414,8 @@ export class BindingClean extends plugin {
                 `  群成员去重后 ${members.size} 人；已绑定 CK/stoken 的 ${all.length} 人，其中不在任何群里的 ${orphan.length} 人`,
             ];
             if (failed) lines.push(`  ⚠️ 有 ${failed} 个群没取到成员，这些群的成员可能被误判成离群，请先确认。`);
+            // 这是个重活（要把所有群的成员都拉一遍），结果记一行日志，事后能核对数字
+            logger.mark(`[xhh][离群] 群 ${groups} 个（取到成员 ${ok} / 失败 ${failed}），群成员去重 ${members.size} 人，绑定 ${all.length} 人，离群 ${orphan.length} 人`);
             if (!orphan.length) {
                 lines.push('', '没有离群绑定。');
             } else {
