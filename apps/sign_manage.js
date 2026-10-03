@@ -81,8 +81,8 @@ function collectAccount(qq) {
     return { qq, fromXh: xhList.length > 0, fromXy: xyList.length > 0, stuids, games, accounts: stuids.size };
 }
 
-/** 所有绑定了 CK 的 QQ */
-function collectAll() {
+/** 所有绑定了 CK 的 QQ（两个来源合并；binding_clean 也复用这一份，别再抄第二套） */
+export function collectAll() {
     const qqs = [...new Set([...listQq(XH_DIR), ...listQq(XY_DIR)])];
     return qqs.map(collectAccount).filter(Boolean);
 }

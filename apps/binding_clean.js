@@ -19,6 +19,8 @@ import fs from 'node:fs';
 import YAML from 'yaml';
 import plugin from '../../../lib/plugins/plugin.js';
 import mysReq from '../utils/mysReq.js';
+// 绑定汇总（含游戏判据）与签到名单共用一份实现，避免两处常量各自演化
+import { collectAll } from './sign_manage.js';
 import { yaml, sleep, makeForwardMsg, pluginPriority, config } from '#xhh';
 
 const INVALID_FILE = './plugins/xhh/data/invalid_stuid.json';
