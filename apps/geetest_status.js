@@ -2,7 +2,7 @@
  * #过码服务状态 —— 过码链路体检
  *
  * 补上游 v3 那套运维能力的短板（它是围绕自己内置 service 写的，这里对着我们本机的
- * /root/geetest-solver，pm2 名 geetest-solver）。回答三件事：
+ * /opt/geetest-solver，pm2 名 geetest-solver）。回答三件事：
  *   1 服务在不在（配置的地址能不能连上）
  *   2 是不是我们的服务（pm2 进程表里有没有同名进程，别把别人占的端口当自己的）
  *   3 现在能不能用（熔断状态）
@@ -45,7 +45,7 @@ async function pm2Status(name) {
     const { stdout } = await execAsync('pm2 jlist', { timeout: 8000 })
     const list = JSON.parse(stdout.slice(stdout.indexOf('[')))
     const hit = list.find(p => p.name === name)
-    return hit ? hit.pm2_env?.status || 'unknown' : null
+    return hit ? { status: hit.pm2_env?.status || 'unknown', path: hit.pm2_env?.pm_exec_path || '' } : null
   } catch (_) {
     return undefined // pm2 不可用/输出异常：说不准
   }
@@ -77,7 +77,11 @@ export class geetestStatus extends plugin {
       const st = await pm2Status(PM2_NAME)
       if (st === null) lines.push(`✗ pm2 里没有 ${PM2_NAME}：端口可能被别的进程占着，或服务是手工起的（重启会丢）`)
       else if (st === undefined) lines.push('? pm2 状态读不到（没装 pm2 或输出异常），无法判断进程归属')
-      else lines.push(`${st === 'online' ? '✓' : '✗'} pm2 进程 ${PM2_NAME}: ${st}`)
+      else {
+        lines.push(`${st.status === 'online' ? '✓' : '✗'} pm2 进程 ${PM2_NAME}: ${st.status}`)
+        // 顺手报出脚本路径：服务目录挪过位置（如 /root → /opt）时一眼能看出跑的是哪一份
+        if (st.path) lines.push(`· 服务脚本：${st.path}`)
+      }
     }
     const b = breakerState()
     lines.push(
