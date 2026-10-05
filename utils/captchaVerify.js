@@ -1,7 +1,7 @@
 /**
  * 米游社本地自动过码 —— 插件侧调用封装（裁剪自 xhh-TL 的 utils/mysVerify.js）
  *
- * 本地过码服务（独立 Python 进程：/root/geetest-solver/server.py，pm2 名 geetest-solver）
+ * 本地过码服务（独立 Python 进程：/opt/geetest-solver/server.py，pm2 名 geetest-solver）
  * 自己完成「申请极验 → 解滑块 → 回交米游社清风险」全流程；本文件只负责把 cookie POST 过去。
  * TL 的手动过码链路（GT-Manual 式「@用户手划」）依赖其 mysClient，未随本文件移植；
  * 未配 auto_verify_addr 时由 captchaNotice 退回「发 #过码」提示。
