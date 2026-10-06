@@ -73,7 +73,23 @@ export class voice extends plugin {
         return false;
     }
 
+    /**
+     * 角色语音入口包装：与图鉴一致走「指令传递」——触发即 return false 把消息交下去，
+     * 让同样认这条指令的插件（bookdex 的 `#xx语音`）也回一份。
+     * 本插件内部用 e._xhhVoiceDone 去重，避免自己的后续规则重复处理同一条消息。
+     */
     async yylb(e) {
+        if (e._xhhVoiceDone) return false;
+        e._xhhVoiceDone = true;
+        try {
+            await this.yylbImpl(e);
+        } catch (err) {
+            logger.error('[xhh][语音] 处理异常，放行给后续插件:', err);
+        }
+        return false;
+    }
+
+    async yylbImpl(e) {
         if (!config().all_voice) return false;
         let isSrMode = e.msg.startsWith("*") || e.msg.includes("星铁");
         let name = e.msg.replace(/#|\*|星铁|原神|语音|列表/g, "");
