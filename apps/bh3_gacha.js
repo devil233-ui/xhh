@@ -740,15 +740,20 @@ export class bh3_gacha extends plugin {
       const file = path.join(ICON_CACHE_DIR, `${safe}.${ext}`);
       if (!fs.existsSync(file)) {
         const res = await mysReq(absUrl);
-        if (!res.ok) return absUrl;
+        if (!res.ok) return '';
         const buf = Buffer.from(await res.arrayBuffer());
         fs.writeFileSync(file, buf);
       }
-      const relPath = path.relative(process.cwd(), file);
-      return `../../../../../${relPath}`;
+      // 内联成 data URL：渲染用的是临时 HTML（file://），相对路径能不能解析到要看
+      // 渲染器的落地目录，实测「窈窕谍影」那张图就是裂的 —— 图标在磁盘上明明有，
+      // HTML 里引的却是解析不到的相对路径。还有一处坑：以前下载失败时退回外链 URL，
+      // 被米游社防盗链挡成裂图（模板是 {{if item.icon}} 才渲染 <img>，返回空串就不出图，
+      // 不会留一个破图框）。
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+      return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
     } catch (err) {
       logger.warn?.('[xhh][bh3_gacha] icon cache failed:', name, err);
-      return absUrl;
+      return '';
     }
   }
 
