@@ -146,6 +146,9 @@ function hostOf(input) {
 
 // 失败记忆：同一域名刚失败过时，短时间内的后续请求用更短的超时/更少的节点，
 // 避免每个请求都等满 8s×N 才失败（图鉴一次查询会连打好几个接口，曾把一条指令拖到 4 分钟）。
+// 明显的二进制资源后缀：这类请求必须走原生 fetch（见 mysReq 开头的说明）
+const BINARY_URL = /\.(png|jpe?g|webp|gif|bmp|ico|svg|mp3|ogg|wav|mp4|webm|zip|woff2?|ttf)(\?|$)/i
+
 const FAIL_TTL = 3 * 60 * 1000
 const failedAt = new Map()
 
@@ -287,6 +290,13 @@ function rebuildResponse(res, headers, body) {
 /** 与 fetch 同签名：米游社域名走 mysFetch，其余走全局 fetch（白名单 URL 走磁盘缓存） */
 export async function mysReq(input, options = {}) {
   const url = typeof input === 'string' ? input : String(input?.url || input)
+
+  // 二进制资源直连（不走云崽 mysFetch）。
+  // 原因：mysFetch 的响应体是被当**文本**存下来的，它的 arrayBuffer() 再按 utf8 编码回去，
+  // 二进制会被毁掉 —— 实测同一段代码抓 PNG，早先（走 fetch 时）下的是合法图，
+  // 统一改走 mysFetch 之后下到的开头是「ï¿½PNG」（U+FFFD + PNG 魔数），渲染出来是破图框。
+  // 图片/音频这类永远别经它；文本类（JSON/HTML）继续走节点优选。
+  if (options?.binary === true || BINARY_URL.test(url)) return fetch(input, options)
   const rule = cacheRuleFor(url, options)
   if (rule) {
     const file = cacheFileOf(url)
