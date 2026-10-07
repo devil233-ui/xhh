@@ -739,7 +739,11 @@ export class bh3_gacha extends plugin {
       const ext = new URL(absUrl).pathname.split('.').pop()?.split('?')[0] || 'png';
       const file = path.join(ICON_CACHE_DIR, `${safe}.${ext}`);
       if (!fs.existsSync(file)) {
-        const res = await mysReq(absUrl);
+        // ⚠️ 这里不能用 mysReq（云崽 mysFetch）：它把响应体当**文本**存，
+        // arrayBuffer() 再按 utf8 编码回去，二进制图会被毁掉 ——
+        // 实测经它抓下来的 PNG 开头是「ï¿½PNG」（U+FFFD 替换字符 + PNG 魔数），
+        // base64 变成 77+9UE5HDQ…，渲染出来就是个破图框。原生 fetch 没这个问题。
+        const res = await fetch(absUrl);
         if (!res.ok) return '';
         const buf = Buffer.from(await res.arrayBuffer());
         fs.writeFileSync(file, buf);
