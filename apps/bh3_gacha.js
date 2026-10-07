@@ -248,13 +248,18 @@ export class bh3_gacha extends plugin {
   }
 
   isValidGachaMenuName(name = '') {
-    name = String(name);
-    if (!name) return false;
-    // GetMenus 的不同 type 会混入自助查询菜单，例如水晶记录/充值记录/礼包币记录/材料等，
-    // 这些不是补给卡池，不能作为抽卡池统计。
-    if (/水晶|充值|礼包币|材料/.test(name)) return false;
-    if (/^(角色|武器|圣痕)$/.test(name)) return false;
-    return /补给|扩充|精准|家园|协同者|人偶|服装|时装|皮肤|服饰/.test(name);
+    const n = String(name || '').trim();
+    if (!n) return false;
+    // 改成「排除法」：GetMenus 的不同 type 会混入自助查询菜单（水晶记录/充值记录/礼包币记录/
+    // 材料等）以及裸产出分类（角色/武器/圣痕），这些不是补给卡池；其余一律按补给池收。
+    //
+    // 不再要求名字里含「补给/扩充/精准…」这类关键字：官方菜单名是**池实例名**，
+    // 不保证带这些字。实测本机 type=1 返回「角色补给A / 家园补给 / 庆典角色B」，
+    // 旧白名单把「庆典角色B」当非法菜单丢掉 —— 于是那个池的抽卡记录一直同步不到
+    // （用户反馈：除了家园以外的卡池记录没有同步）。
+    if (/记录|流水|水晶|充值|礼包|材料|道具|货币/.test(n)) return false;
+    if (/^(角色|武器|圣痕)$/.test(n)) return false;
+    return true;
   }
 
 
