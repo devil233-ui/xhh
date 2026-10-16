@@ -365,6 +365,16 @@ function wikiCommandText(e) {
   return msg;
 }
 
+// 从消息首符号推断游戏（全角半角都认）。供 illustratedBookImpl 在
+// loader 未注入 e.game 时使用；与 PREFIX_GAME 的映射保持一处。
+function prefixGame(cmdCheck, PREFIX_GAME) {
+  const raw = String(cmdCheck || '');
+  for (const ch of raw.slice(0, 2)) {
+    if (PREFIX_GAME[ch]) return PREFIX_GAME[ch];
+  }
+  return '';
+}
+
 const pr = yaml.get('./plugins/xhh/config/other.yaml').wiki;
 export class Wiki extends plugin {
   constructor(e) {
@@ -501,7 +511,13 @@ export class Wiki extends plugin {
     const cmd = wikiCommandText(e);
     const PREFIX_GAME = { '#': 'gs', '＃': 'gs', '*': 'sr', '＊': 'sr', '※': 'sr', '%': 'zzz', '％': 'zzz', '!': 'bh3', '！': 'bh3' };
     const cmdCheck = cmd.trim();
-    const game = PREFIX_GAME[cmdCheck[0]] || '';
+    // TRSS loader 在派发前会把 *x / %x 改写成 #星铁x / #绝区零x（lib/plugins/loader.js:307/310，
+    // 同时设 e.game），首字符因此恒为 #。前缀符号只认首字符的话，% / * 查询会被误判成原神。
+    // 所以游戏判定以 loader 注入的 e.game 为准（星铁/绝区零改写过的消息必然带），
+    // 没有该标志（!崩三 / 全角＃*％ 等不被改写的形态）才用首符号判定。
+    const LOADER_GAME = { sr: 'sr', zzz: 'zzz' };
+    const loaderGame = LOADER_GAME[e?.game];
+    const game = loaderGame || prefixGame(cmdCheck, PREFIX_GAME);
     if (!game) {
       // 完全静默之外的唯一例外：明显是图鉴查询（「图鉴」出现在消息首/尾，与指令形态一致；
       // 句中提到「图鉴」的普通聊天不提示）但前缀写错/缺失，提示一次正确用法后仍放行（return false）。
