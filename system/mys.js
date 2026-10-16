@@ -1164,22 +1164,41 @@ js,wq,syw,yq 角色,武器,圣痕,人偶
     // 绝区零详细信息（nanoka.cc 优先，米游社官方 Wiki 回退）
     // forceOfficial=true：id 已知是官方 content_id（来自 zzz_data 的官方兜底匹配），跳过 nanoka 直接走官方
     async zzz_detail(id, forceOfficial = false) {
-        let type = id >= 1000 && id < 2000 ? 'js'
+        // 区间只是对 nanoka 编号体系的推断，不是事实：官方 Wiki 的 content_id 有自己的
+        // 编号体系，驱动盘「法厄同之歌」1194、「衔尾蛇之环」1193 都落进 1000-1999，
+        // 按旧逻辑会被误判成代理人（js），拿驱动盘 id 查代理人列表 → 查不到 → 详情整体
+        // 返回 false。因此区间只当先验猜测，最终以官方分类列表的裁决为准（官方四个频
+        // 道 content_id 互不重复，2026-10-16 实测；列表是官方 CDN 静态接口，无鉴权）。
+        let guessed = id >= 1000 && id < 2000 ? 'js'
             : id >= 12000 && id < 20000 ? 'wq'
             : id >= 31000 && id < 40000 ? 'syw'
             : id >= 53000 && id < 60000 ? 'yq' : '';
-        // 米游社官方 Wiki 的 content_id 并不沿用 nanoka 的编号区间，
-        // 例如角色 1624、音擎 2162、邦布 2108，因此按分类列表补判一次。
-        if (!type) {
-            for (const candidate of ['js', 'wq', 'syw', 'yq']) {
+        let type = guessed;
+        const probeLists = async () => {
+            // 有猜测值时先验证猜测本身，命中失败再扫其余频道；猜不中再当未知 id 补判。
+            const channels = guessed ? [guessed, ...['js', 'wq', 'syw', 'yq'].filter(t => t !== guessed)]
+                : ['js', 'wq', 'syw', 'yq'];
+            for (const candidate of channels) {
                 try {
                     const list = await this.zzz_official_list(candidate);
                     if (list.some(item => String(item.content_id) === String(id))) {
                         type = candidate;
-                        break;
+                        return true;
                     }
                 } catch (_) {}
             }
+            return false;
+        };
+        if (type) {
+            // 先验证区间猜测：猜错则纠正（如 1194 实际在驱动盘列表里）。
+            // 全部列表都查无此 id 时保持旧语义：仍按猜测值走详情，由官方详情内部的
+            // 列表复查兜底，行为与修复前一致（角色 1624、音擎 2162、邦布 2108 这类
+            // nanoka 已停服后无法核实区间的旧路径不受影响）。
+            if (!await probeLists()) type = guessed;
+        }
+        if (!type) {
+            // id 落不进任何 nanoka 区间：按分类列表补判一次。
+            await probeLists();
         }
         if (!type) return false;
         // 冷却期内直接走官方 Wiki，不再请求已失效的 nanoka
