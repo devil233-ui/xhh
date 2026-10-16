@@ -1244,6 +1244,21 @@ export class Wiki extends plugin {
 
   async zzz_syw_pictures(e, data) {
     const c = data.content || {};
+    // 官方 Wiki 的内容接口不带鉴权时只给骨架字段，2/4件套效果实际藏在 c_46 表
+    // （content.ext → c_46.table.list，key "2"/"4" 对应 2/4件套文案）。
+    // 兼容三种来源：字段直出（c.desc2/desc4）→ c_46 表 → 解析失败留空。
+    const zzzSywSetEffect = (c, key) => {
+      const direct = key === '2' ? c.desc2 : c.desc4;
+      if (direct) return direct;
+      try {
+        const ext = typeof c.ext === 'string' ? JSON.parse(c.ext) : (c.ext || {});
+        const rows = ext?.c_46?.table?.list;
+        if (!Array.isArray(rows)) return '';
+        return rows.find(row => String(row?.key) === key)?.value || '';
+      } catch (_) {
+        return '';
+      }
+    };
     const obcIcon = await this.getZzzObcIcon(c.name, 46);
     const view = {
       name: c.name || '未知驱动盘',
@@ -1253,8 +1268,8 @@ export class Wiki extends plugin {
       tags: [{ text: '驱动盘', primary: true }, { text: '2件套' }, { text: '4件套' }],
       profile: this.zzzCleanText(c.story || '', 220),
       info: [
-        { key: '2件套', value: this.zzzCleanText(c.desc2, 120) },
-        { key: '4件套', value: this.zzzCleanText(c.desc4, 160) }
+        { key: '2件套', value: this.zzzCleanText(zzzSywSetEffect(c, '2'), 120) },
+        { key: '4件套', value: this.zzzCleanText(zzzSywSetEffect(c, '4'), 160) }
       ],
       stats: [], strategy: [], skills: [], talents: [], recommend: []
     };
