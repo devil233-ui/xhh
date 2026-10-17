@@ -333,27 +333,30 @@ function extractChineseWords(text = '') {
 }
 
 /**
- * 米游社 wiki 正文 → 带换行的纯文本。
- * 原文用 <p> 分段、<br> 段内换行（光锥描述就是多段台词/叙述），而模板 .content 是
- * white-space: pre-wrap，本来就按 \n 换行；旧代码最后一步 replace(/\s+/g,' ')
- * 把换行全压成空格，整段描述挤成一行。这里保留原文结构：<br> → 单换行、
- * 块级结束标签 → 空行，只压缩行内多余空白。
+ * 米游社 wiki 正文 → 保留段落/换行与强调样式的片段。
+ * 模板用 {{@ }} 原样输出、.content 是 white-space: pre-wrap，所以这里输出单行 HTML：
+ * <br> 就是换行、块级结束标签转成段间空行，白名单只留 <em>/<i>/<strong>/<b>
+ * （原文台词用 <em> 表示斜体、技能说明用 <strong> 加粗），其余标签——颜色 span、
+ * 表格、图片——一律剥掉，最后压缩行内空白，避免 pre-wrap 把源码缩进也显示出来。
  */
-function htmlToMultilineText(html = '') {
-  return String(html || '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(?:p|div|h[1-6]|li|tr|table)>/gi, '\n\n')
+function htmlToRichText(html = '') {
+  const br = '\u0000';
+  let s = String(html || '')
+    .replace(/<br\s*\/?>/gi, br)
+    .replace(/<\/(?:p|div|h[1-6]|li|tr|table)>/gi, br + br)
+    .replace(/<(\/?)(em|i|strong|b)\b[^>]*>/gi, (m, close, tag) => `<${close}${tag.toLowerCase()}>`)
     .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .split('\n')
-    .map(line => line.replace(/[ \t\u00a0]+/g, ' ').trim())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .replace(/&nbsp;/g, ' ');
+  s = s
+    .split(br)
+    .map(part => part.replace(/[\s\u00a0]+/g, ' ').trim())
+    .join(br);
+  return s
+    .replace(/\u0000{3,}/g, br + br)
+    .replace(/^\u0000+|\u0000+$/g, '')
+    .replace(/\u0000/g, '<br>');
 }
+
 
 function extractHonkaiStarRailData(html = '') {
   const text = String(html || '').replace(/<br\s*\/?\>/g, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
@@ -1897,7 +1900,7 @@ export class Wiki extends plugin {
     if (content.rarity == '4星') mat_num = [15, 15, 12, 3, 9, 12, '70.7w'];
     let miaoshu = '';
     const descMatch = rawHtml[0].match(/光锥描述([\s\S]*?)<img/);
-    if (descMatch) miaoshu = htmlToMultilineText(descMatch[1]);
+    if (descMatch) miaoshu = htmlToRichText(descMatch[1]);
     data = {
       name,
       ...content,
