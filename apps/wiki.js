@@ -336,26 +336,35 @@ function extractChineseWords(text = '') {
  * 米游社 wiki 正文 → 保留段落/换行与强调样式的片段。
  * 模板用 {{@ }} 原样输出、.content 是 white-space: pre-wrap，所以这里输出单行 HTML：
  * <br> 就是换行、块级结束标签转成段间空行，白名单只留 <em>/<i>/<strong>/<b>
- * （原文台词用 <em> 表示斜体、技能说明用 <strong> 加粗），其余标签——颜色 span、
- * 表格、图片——一律剥掉，最后压缩行内空白，避免 pre-wrap 把源码缩进也显示出来。
+ * （原文台词用 <em> 表示斜体），其余标签——颜色 span、表格、图片——一律剥掉。
+ * 白名单标签必须先换成占位符再剥标签，否则刚还原的 <em> 会被下一步的 /<[^>]+>/
+ * 一起删掉（2026-10-17 踩过：描述区斜体全丢）；最后压缩行内空白，避免 pre-wrap
+ * 把源码缩进也显示出来。
  */
 function htmlToRichText(html = '') {
-  const br = '\u0000';
+  const NL = '\u0000';
+  const KEEP_OPEN = '\u0001';
+  const KEEP_CLOSE = '\u0002';
+  const KEEP_END = '\u0003';
   let s = String(html || '')
-    .replace(/<br\s*\/?>/gi, br)
-    .replace(/<\/(?:p|div|h[1-6]|li|tr|table)>/gi, br + br)
-    .replace(/<(\/?)(em|i|strong|b)\b[^>]*>/gi, (m, close, tag) => `<${close}${tag.toLowerCase()}>`)
+    .replace(/<br\s*\/?>/gi, NL)
+    .replace(/<\/(?:p|div|h[1-6]|li|tr|table)>/gi, NL + NL)
+    .replace(/<(em|i|strong|b)\b[^>]*>/gi, (m, tag) => KEEP_OPEN + tag.toLowerCase() + KEEP_END)
+    .replace(/<\/(em|i|strong|b)\s*>/gi, (m, tag) => KEEP_CLOSE + tag.toLowerCase() + KEEP_END)
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ');
   s = s
-    .split(br)
+    .split(NL)
     .map(part => part.replace(/[\s\u00a0]+/g, ' ').trim())
-    .join(br);
+    .join(NL);
   return s
-    .replace(/\u0000{3,}/g, br + br)
+    .replace(/\u0000{3,}/g, NL + NL)
     .replace(/^\u0000+|\u0000+$/g, '')
-    .replace(/\u0000/g, '<br>');
+    .replace(/\u0000/g, '<br>')
+    .replace(/\u0001(em|i|strong|b)\u0003/g, '<$1>')
+    .replace(/\u0002(em|i|strong|b)\u0003/g, '</$1>');
 }
+
 
 
 function extractHonkaiStarRailData(html = '') {
