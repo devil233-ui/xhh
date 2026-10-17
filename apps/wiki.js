@@ -335,12 +335,22 @@ function extractChineseWords(text = '') {
 function extractHonkaiStarRailData(html = '') {
   const text = String(html || '').replace(/<br\s*\/?\>/g, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
   const clean = text.replace(/\s+/g, ' ').trim();
+  // 旧实现把整页文本塞进 jineng[1]，模板里技能区会连「基础介绍/命途/稀有度…光锥描述 当她大笑时…」
+  // 全部渲染出来。这里只保留到「光锥描述」之前：先截掉描述段，再剥导航词与技能名标题。
+  let skill = clean.split('光锥描述')[0] || clean;
+  skill = skill.replace(/^.*?技能/, '');
+  skill = skill.replace(/^(?:基础介绍|命途|稀有度|技能)\s*/g, '');
+  // 技能名（如「瞩目」）后面紧跟效果正文；惰性截到首个谓语字为止，
+  // 若正文本身就以谓语字开头（无技能名）则不再剥。
+  if (!/^[使装获每当其]/u.test(skill)) {
+    skill = skill.replace(/^[\u4e00-\u9fa5A-Za-z0-9·：:、\s]{1,20}?(?=[使装获每当其])/u, '');
+  }
   return {
     img: extractUniqueHttpsLinks(html)[0] || '',
     fate: clean.match(/命途\s*([^\s]+)/)?.[1] || '',
     rarity: clean.match(/稀有度\s*([^\s]+)/)?.[1] || '',
     desc: clean,
-    jineng: ['', clean]
+    jineng: ['', skill]
   };
 }
 
