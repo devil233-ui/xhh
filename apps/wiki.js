@@ -332,6 +332,29 @@ function extractChineseWords(text = '') {
   return String(text || '').match(/[\u4e00-\u9fa5·・（）()]+/g) || [];
 }
 
+/**
+ * 米游社 wiki 正文 → 带换行的纯文本。
+ * 原文用 <p> 分段、<br> 段内换行（光锥描述就是多段台词/叙述），而模板 .content 是
+ * white-space: pre-wrap，本来就按 \n 换行；旧代码最后一步 replace(/\s+/g,' ')
+ * 把换行全压成空格，整段描述挤成一行。这里保留原文结构：<br> → 单换行、
+ * 块级结束标签 → 空行，只压缩行内多余空白。
+ */
+function htmlToMultilineText(html = '') {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|h[1-6]|li|tr|table)>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .split('\n')
+    .map(line => line.replace(/[ \t\u00a0]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function extractHonkaiStarRailData(html = '') {
   const text = String(html || '').replace(/<br\s*\/?\>/g, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -1873,15 +1896,8 @@ export class Wiki extends plugin {
     );
     if (content.rarity == '4星') mat_num = [15, 15, 12, 3, 9, 12, '70.7w'];
     let miaoshu = '';
-    const descMatch = rawHtml[0].match(/光锥描述(.*?)<img/);
-    if (descMatch) {
-      miaoshu = descMatch[1]
-        .replace(/<br\s*\/?\>/g, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
+    const descMatch = rawHtml[0].match(/光锥描述([\s\S]*?)<img/);
+    if (descMatch) miaoshu = htmlToMultilineText(descMatch[1]);
     data = {
       name,
       ...content,
