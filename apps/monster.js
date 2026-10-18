@@ -27,7 +27,9 @@ export class monster extends plugin {
             priority: pluginPriority('monster', -200),
             rule: [
                 {
-                    reg: '^[#%*]*(原神|genshin|ys|sr|星穹铁道|崩坏星穹铁道|铁道|穹铁|星铁|绝区零|绝区|zzz|zzZ|ZZZ|崩坏3|崩坏三|崩三|bh3|Bh3|BH3)?\\s*(怪物|魔物|敌人|BOSS|boss|Boss|首领)(图鉴|列表|大全)?\\s*([\\s\\S]*)$',
+                    // 与 apps/wiki.js 一致：必须带符号前缀（# ＃ 原神 / * ＊ ※ 星铁 / % ％ 绝区零 / ! ！ 崩三）。
+                    // 无前缀不响应——否则「boss还会不断召唤小怪」这类普通聊天会被当成「boss + 关键词」吞掉。
+                    reg: '^[#＃%％*＊※!！]+(原神|genshin|ys|sr|星穹铁道|崩坏星穹铁道|铁道|穹铁|星铁|绝区零|绝区|zzz|zzZ|ZZZ|崩坏3|崩坏三|崩三|bh3|Bh3|BH3)?\\s*(怪物|魔物|敌人|BOSS|boss|Boss|首领)(图鉴|列表|大全)?\\s*([\\s\\S]*)$',
                     fnc: 'monster',
                 },
             ],
@@ -40,7 +42,7 @@ export class monster extends plugin {
 
     async monster(e) {
         const raw = String(e.msg || e.raw_message || '').trim();
-        const text = raw.replace(/^[#%*]+/, '').trim();
+        const text = raw.replace(/^[#＃%％*＊※!！]+/, '').trim();
         const m = text.match(CMD_REG);
         if (!m) return false;
 
