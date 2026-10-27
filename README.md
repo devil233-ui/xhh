@@ -37,7 +37,7 @@
 
 ```bash
 # 在云崽根目录执行
-git clone -b v2 https://github.com/YUYUYUYU2147/xhh.git ./plugins/xhh/
+git clone https://github.com/devil233-ui/xhh.git ./plugins/xhh/
 cd ./plugins/xhh && pnpm i
 ```
 重启云崽 → 群里发 `#小花火帮助` 就能看到全部指令。
@@ -47,14 +47,14 @@ cd ./plugins/xhh && pnpm i
 
 ```bash
 # GitHub 访问慢时用加速前缀（换成你可用的加速地址）
-git clone -b v2 <加速前缀>https://github.com/YUYUYUYU2147/xhh.git ./plugins/xhh/
+git clone <加速前缀>https://github.com/devil233-ui/xhh.git ./plugins/xhh/
 
 # 已安装：换源
 cd plugins/xhh
-git remote set-url origin https://github.com/YUYUYUYU2147/xhh.git
+git remote set-url origin https://github.com/devil233-ui/xhh.git
 
-# 更新
-git fetch origin && git checkout -B v2 origin/v2 && git pull && pnpm i
+# 更新（本仓库默认分支为 master，没有 v2 分支）
+git fetch origin && git checkout -B master origin/master && git pull && pnpm i
 ```
 </details>
 
@@ -143,7 +143,7 @@ git fetch origin && git checkout -B v2 origin/v2 && git pull && pnpm i
 
 - **不依赖任何第三方服务、不需要付费接口**：验证码走本插件自带的本地验证页（可选 cloudflared 临时隧道把链接暴露到公网，见[手动过码](#手动过码米游社风控-1034)）。
 - **数据来源**：米游社官方公告（需你自己的 CK）、BWiki 静态页、官方 WIKI、nanoka.cc（原神与星铁的角色 / 武器图鉴与角色详情）。插件只做解析与出图，不破解任何接口。
-- **分支约定**：`v2` 为 TRSS-Yunzai / OneBot 适配分支；上游原作者 README 保留在文末，便于追溯。
+- **分支与仓库**：本仓库 `devil233-ui/xhh` 的默认分支 `master` 就是 TRSS-Yunzai / OneBot 适配分支（从上游 `YUYUYUYU2147/xhh` 的 `v2` 分叉后独立维护，**没有 v2 分支**）；上游原作者 README 保留在文末，便于追溯。
 
 ---
 
