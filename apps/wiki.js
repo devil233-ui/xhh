@@ -576,6 +576,12 @@ export class Wiki extends plugin {
     const isSr = game === 'sr';
     const isZZZ = game === 'zzz';
     const isBH3 = game === 'bh3';
+    // 强制前缀的真实语义：TRSS loader 会把「绝区零xxx / 星铁xxx」改写成「#绝区零xxx」
+    // 并注入 e.game，所以任何以游戏名开头的**自然语言**也会被塞进图鉴宽规则
+    // （实测「绝区零敢出联动角色」会顶出一整张角色列表图）。
+    // 这里回到原文判断：原文既没有符号前缀、也没写「图鉴」，就当普通聊天不响应。
+    const rawText = String(e?.raw_message || '').replace(/\[CQ:[^\]]*\]/g, '').trim();
+    if (rawText && !/^[#＃%％*＊※!！]/.test(rawText) && !/图鉴/.test(rawText)) return false;
     let name = cmd
       .replace(/^[#＃%％*＊※!！]*/, '')
       // 插件前缀（xhh菲欧妮图鉴 / 小花火菲欧妮图鉴）不参与查询名
@@ -651,10 +657,14 @@ export class Wiki extends plugin {
       logger.mark(`[xhh][图鉴] ${name} 原神侧未命中（新条目请确认米游社图鉴已收录）`);
       return false;
     }
-    // 最后查总列表。带游戏前缀（#/ * /%）的消息不做列表兜底：
-    // 「#角色详情」这类通用词会把全角色列表图顶出来，直接静默放行。
-    if (/角色|武器|大剑|双手剑|单手剑|法器|长枪|弓箭|弓|光锥|圣遗物|遗器|音擎|驱动盘|邦布|圣痕|人偶|协同者/.test(name)) {
-      return this.list(e, name, isSr, isZZZ, isBH3);
+    // 最后查总列表：只有「剥掉游戏名后恰好是纯类别词」时才出列表。
+    // 旧写法是 name 里含「角色/武器」子串就出全量列表，于是「#绝区零敢出联动角色」
+    // 这类消息会把整张角色列表图顶出来（2026-10-27 实测）。
+    const bareName = name
+      .replace(/^(原神|genshin|ys|gs|星穹铁道|崩坏星穹铁道|星铁|铁道|穹铁|sr|崩坏3|崩坏三|崩三|bh3|绝区零|绝区|zzz)/i, '')
+      .trim();
+    if (/^(角色|武器|大剑|双手剑|单手剑|法器|长枪|弓箭|弓|光锥|圣遗物|遗器|音擎|驱动盘|邦布|圣痕|人偶|协同者)$/.test(bareName)) {
+      return this.list(e, bareName, isSr, isZZZ, isBH3);
     }
     if (config().debug) logger.mark(`[xhh] 图鉴未命中: name=「${name}」 isSr=${isSr} isZZZ=${isZZZ} isBH3=${isBH3}`);
     // 显式写了「图鉴」却查不到时提示一次（多半是名字打错）；隐式调用静默。
