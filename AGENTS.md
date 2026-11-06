@@ -73,6 +73,10 @@
 - 订阅按 `[bot, qq, game]` 存（`subKey`），开启后兑的是**该 QQ 名下该游戏的全部绑定 uid**，不是全局所有用户。
 - 自测：`cd /root/Yunzai && node plugins/xhh/temp/redeem-selftest.mjs`（29 例）。cwd 必须是 `/root/Yunzai`，脚本内先 stub 全局量，否则 `#xhh` 链读不到 `config/default_config/`。
 - `utils/redeemClient.js` 不在热加载范围（`/root/Yunzai/AGENTS.md` 第 30/36 行），改它之后要 `#重启`。
+- **兑换怎么落到账号上**：`GET https://hk4e-api.mihoyo.com/common/apicdkey/api/webExchangeCdkey?uid=&region=&cdkey=&game_biz=hk4e_cn&lang=zh-cn`，header 只带 `Cookie` + `Referer`，**不需要 DS 签名**（`utils/redeemClient.js:181-194` 的注释与实测都印证：Cookie 有效时返回的是码本身的错误如 `-2001 兑换码已过期`，Cookie 无效才会是 `-100/-1071`）。这不是往游戏账号里写数据，是请求官方服务器校验 CDK 后把奖励投进该 `uid` 的游戏内邮箱，玩家下次登录在邮箱领。星铁/绝区零同构，只换 host 与 `game_biz`（`hkrpg_cn`/`nap_cn`）。
+- **`region` 必须与角色实际区服一致**（官服 `cn_gf01`、B服 `cn_qd01` 等），由 `getUserGameRolesByCookie` 返回的 `region` 提供，不要写死；`game_uid` 与 `region` 错配会兑换失败。
+- **这是官方网页在用的接口，但不是开放 API**：没有文档、无开发者授权、有频率与风控（`-2016` 冷却、`-1033/-1035/-1071/-100` 鉴权或风控）。游戏内「设置→账户→兑换码」走客户端协议，与这条 HTTP 路径不是同一条，别混为一谈。
+- **`Cookie` 等于账号登录态**（`ltuid` + `cookie_token`/`stoken`），兑换请求必须带；日志与报错里不得打印 Cookie 原文。
 
 ## 沙盒验证（改完必跑）
 
