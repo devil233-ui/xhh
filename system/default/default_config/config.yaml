@@ -96,6 +96,9 @@ b_cd: false
 #bilibili自动下载图片时，小于几张图片时，不再合并消息：填数字 (0表示始终合并)
 b_img_num: 0
 
+#bilibili动态解析时是否把动态原图再单独发一遍：true是，false否(false=只发渲染卡片，不在群里重发原图)
+b_img_send: true
+
 #是否自动解析消息里的B站直播间链接：true开，false关 (关掉后仍可用「#直播解析 房间号」手动解析)
 bili_live: true
 

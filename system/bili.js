@@ -824,7 +824,8 @@ class bili {
             ret: false
         });
 
-        if (send && pics.length) {
+        // 只渲染模式：b_img_send 置 false 时不重发动态原图，只留渲染卡片；未配置视为发送，保持旧行为
+        if (send && pics.length && config().b_img_send !== false) {
             var pic_ = [];
             // pics.map(v => {
             //   pic_.push(segment.image(v));

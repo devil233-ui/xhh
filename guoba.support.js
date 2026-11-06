@@ -457,6 +457,12 @@ export const supportGuoba = () => {
         componentProps: { min: 0, max: 20, step: 1 },
       },
       {
+        field: 'b_img_send',
+        label: '动态发送原图',
+        helpMessage: '关闭后动态解析只发渲染卡片，不再把动态里的原图单独重发一遍',
+        component: 'Switch',
+      },
+      {
         component: 'SOFT_GROUP_BEGIN',
         label: 'B站直播解析',
       },
@@ -1285,6 +1291,7 @@ export const supportGuoba = () => {
         b_lj: !!cfg.b_lj,
         b_cd: !!cfg.b_cd,
         b_img_num: cfg.b_img_num ?? 0,
+        b_img_send: cfg.b_img_send !== false,
         bili_live: cfg.bili_live !== false,
         bili_live_only_live: !!cfg.bili_live_only_live,
         bili_live_cd: cfg.bili_live_cd ?? 60,
@@ -1428,6 +1435,7 @@ export const supportGuoba = () => {
         bilibili: data.bilibili,
         b_lj: data.b_lj,
         b_cd: data.b_cd,
+        b_img_send: data.b_img_send,
         bili_live: data.bili_live,
         bili_live_only_live: data.bili_live_only_live,
         bili_live_video: data.bili_live_video,
