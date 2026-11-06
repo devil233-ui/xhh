@@ -235,6 +235,16 @@ export const supportGuoba = () => {
       },
       {
         component: 'SOFT_GROUP_BEGIN',
+        label: '兑换码设置',
+      },
+      {
+        field: 'redeem',
+        label: '兑换码功能',
+        helpMessage: '三游戏国服手动兑换与自动订阅',
+        component: 'Switch',
+      },
+      {
+        component: 'SOFT_GROUP_BEGIN',
         label: '签到设置',
       },
       {
