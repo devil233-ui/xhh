@@ -41,10 +41,19 @@ export class update extends plugin {
       if (!git || !git.includes("git version")) {
         return logger.error("未找到git");
       }
+      // 自动更新不做 reset --hard：本次更新会覆盖的本地改动一律跳过，免得半夜把正在改的代码清掉
+      let dirty = await this.checkDirty("xhh");
+      if (dirty === null) {
+        logger.error("xhh 工作区状态检查失败，跳过自动更新");
+        return;
+      }
+      if (dirty.length) {
+        logger.mark(`xhh 有 ${dirty.length} 个未提交改动，跳过自动更新`);
+        return;
+      }
       this.oldCommitId = await this.getcommitId("xhh");
       uping = true;
-      let cm =
-        "cd plugins/xhh && git reset --hard && git pull --rebase --allow-unrelated-histories";
+      let cm = "cd plugins/xhh && git pull --ff-only";
       let ret = await this.execSync(cm);
       uping = false;
       if (ret.error) {
@@ -114,12 +123,29 @@ export class update extends plugin {
   async runUpdate(plugin = "") {
     this.isNowUp = false;
 
-    let cm = `cd "plugins/${plugin}" && git pull --no-rebase`;
-
+    let isForce = this.e.msg.includes("强制");
+    let cm = `cd "plugins/${plugin}" && git pull --ff-only`;
     let type = "更新";
-    if (this.e.msg.includes("强制")) {
+
+    if (isForce) {
       type = "强制更新";
       cm = `cd "plugins/${plugin}" && git reset --hard && git pull --rebase --allow-unrelated-histories`;
+    } else {
+      // 普通更新只走快进；会被这次更新覆盖的本地改动先拦下，不覆盖
+      let dirty = await this.checkDirty(plugin);
+      if (dirty === null) {
+        await this.reply("检查工作区状态失败，已停止更新，请手动确认后重试");
+        return false;
+      }
+      if (dirty.length) {
+        let shown = dirty.slice(0, 10).join("\n");
+        let more = dirty.length > 10 ? `\n…另有 ${dirty.length - 10} 处` : "";
+        await this.reply(
+          `工作区还有 ${dirty.length} 处未提交改动，已停止更新（更新会覆盖它们）：\n${shown}${more}\n\n` +
+            "先提交或备份这些改动再更新；确认要丢弃本地修改，再发「#小花火强制更新」。"
+        );
+        return false;
+      }
     }
 
     this.oldCommitId = await this.getcommitId(plugin);
@@ -168,6 +194,15 @@ export class update extends plugin {
       return;
     }
 
+    if (/Not possible to fast-forward|diverging branches/i.test(errMsg)) {
+      await this.reply(
+        msg +
+          "\n远端与本地已经分叉，无法快进合并。\n" +
+          "可以在本地整理提交后再试，或者执行#小花火强制更新，放弃本地修改"
+      );
+      return;
+    }
+
     if (errMsg.includes("be overwritten by merge")) {
       await this.reply(
         msg +
@@ -188,6 +223,54 @@ export class update extends plugin {
     }
 
     await this.reply([ errMsg, stdout ]);
+  }
+
+  /**
+   * 本地未提交改动里，真正会被这次更新覆盖的那些文件。
+   * 先 fetch 看清远端要改哪些文件，再与本地改动取交集——只有交集才拦，
+   * 本地改了但远端没碰的文件 git 会自己保留，不该因此阻止更新
+   * （system/default/*.yaml 是运行期数据，几乎天天在变，一刀切会让人永远更新不了）。
+   * 返回 [] 表示可安全更新，非空数组表示这些文件会被覆盖，null 表示检查失败。
+   */
+  async checkDirty(plugin = "") {
+    let cwd = `cd "plugins/${plugin}"`;
+    // fetch 失败说明网络或远端有问题，交给接下来的 pull 自己报错，这里不拦
+    let fetch = await this.execSync(`${cwd} && git fetch --quiet`);
+    if (fetch.error) return [];
+
+    let local = await this.statusList(plugin);
+    if (local === null) return null;
+    if (!local.length) return [];
+
+    let up = await this.execSync(`${cwd} && git rev-parse --abbrev-ref @{u}`);
+    // 没有 upstream 就无从判断，退回全量拦截
+    if (up.error) return local;
+
+    let incoming = await this.execSync(`${cwd} && git diff --name-only HEAD...@{u}`);
+    if (incoming.error) return local;
+
+    let willTouch = new Set(
+      String(incoming.stdout || "")
+        .split("\n")
+        .map(s => s.trim())
+        .filter(Boolean)
+    );
+    return local.filter(file => willTouch.has(file));
+  }
+
+  /** 已跟踪文件的未提交改动列表；null 表示 git 命令失败 */
+  async statusList(plugin = "") {
+    let ret = await this.execSync(`cd "plugins/${plugin}" && git status --porcelain --untracked-files=no`);
+    if (ret.error) {
+      logger.error(`检查 ${plugin} 工作区状态失败：${String(ret.error)}`);
+      return null;
+    }
+    return String(ret.stdout || "")
+      .split("\n")
+      .map(line => line.replace(/\r$/, ""))
+      .filter(line => line.trim())
+      // porcelain 固定是「2 位状态 + 1 空格 + 路径」，不能先 trim 再切，否则路径首字符会被吃掉
+      .map(line => line.slice(3).trim());
   }
 
   async getcommitId(plugin = "") {
