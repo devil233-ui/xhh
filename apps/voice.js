@@ -4,8 +4,7 @@ import {
     yaml,
     render,
     mys,
-    config,
-    getSource
+    config
 } from '#xhh';
 import {
     execSync
@@ -192,16 +191,30 @@ export class voice extends plugin {
     }
 
     async fsyy(e) {
-        if (!e.source && !e.getReply) return false;
         if (!config().all_voice) return false;
-        let source = await getSource(e)
-        if (!source) return false;
-        if (Number(source.user_id) !== Number(Bot.uin)) return false;
-        if (source.message[0]?.type != 'image') return false;
+        if (!e.source && !e.getReply) return false;
+
+        // 只认「引用的正是本插件发出去的语音列表图」：列表图发送时会把数据写到
+        // temp/yy_pic/<message_id>.json，用被引用消息的 id 直接比对这个缓存就够了。
+        // 不再走 getSource / getChatHistory —— 私聊取历史在部分协议端会抛错，而 Yunzai 的
+        // loader 一旦捕获到本插件抛错就终止整条处理链，排在后面的插件（如 bookdex 的引用
+        // 序号）全都收不到消息；合并转发、别人的图也本来就不需要取消息体。
+        let replyId = String(e.source?.message_id || e.source?.seq || e.source?.time || '')
+            .replace(/\//g, '');
+        if (!replyId && typeof e.getReply === 'function') {
+            // 老适配器只给 getReply、不给 e.source，兜底一次；拿不到就当没引用
+            const src = await e.getReply().catch(() => null);
+            replyId = String(src?.message_id || '').replace(/\//g, '');
+        }
+        if (!replyId) return false;
+
+        const picJson = `./plugins/xhh/temp/yy_pic/${replyId}.json`;
+        if (!fs.existsSync(picJson)) return false;
 
         if (e.msg && e.msg.length > 5) return false;
         let xh = /\d+/.exec(e.msg);
-        let n = xh - 1;
+        if (!xh) return false;
+        let n = Number(xh[0]) - 1;
         let lx
         if (/日语|日文/.test(e.msg)) {
             // type = '日语'
@@ -222,15 +235,7 @@ export class voice extends plugin {
             return false;
         }
 
-        source.message_id = source.message_id.toString().replace(/\//g, '');
-
-        if (!fs.existsSync(`./plugins/xhh/temp/yy_pic/${source.message_id}.json`)) return false;
-        let data = JSON.parse(
-            fs.readFileSync(
-                `./plugins/xhh/temp/yy_pic/${source.message_id}.json`,
-                'utf-8'
-            )
-        );
+        let data = JSON.parse(fs.readFileSync(picJson, 'utf-8'));
         // let isSr = data.isSr;
         // let list = data.list;
         // let table = data.table;
