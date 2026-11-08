@@ -12,6 +12,14 @@ import {
 
 const path = process.cwd();
 
+// 私聊里引用图片消息时，部分协议端不会把 reply 段带上来（2026-11-08 19:00:44 实测：
+// 私聊引用语音列表图发序号，入站消息只有「1」，没有 [CQ:reply]，fsyy 拿不到被引用消息）。
+// 这里记住每个会话最近一次发出去的语音列表图，只在「完全没有引用信息」时兜底；
+// 只要带了引用（哪怕引用的是别人的转发卡），就严格按引用 id 匹配，不会抢别的插件的活。
+const lastVoicePic = new Map();
+const VOICE_PIC_TTL = 30 * 60 * 1000;
+const voicePicKey = e => (e.isGroup ? `group:${e.group_id}` : `private:${e.user_id}`);
+
 function mergeRoleNames(filePath, aliases) {
     const names = {
         ...(yaml.get(filePath) || {})
@@ -185,6 +193,7 @@ export class voice extends plugin {
                 JSON.stringify(data),
                 'utf-8'
             );
+            lastVoicePic.set(voicePicKey(e), { id: f.message_id, ts: Date.now() });
             return true;
         }
         return false;
@@ -205,6 +214,11 @@ export class voice extends plugin {
             // 老适配器只给 getReply、不给 e.source，兜底一次；拿不到就当没引用
             const src = await e.getReply().catch(() => null);
             replyId = String(src?.message_id || '').replace(/\//g, '');
+        }
+        if (!replyId && !e.isGroup) {
+            // 私聊引用图片常常连 reply 段都没有（见文件顶部注释），用最近一次列表图兜底
+            const rec = lastVoicePic.get(voicePicKey(e));
+            if (rec && Date.now() - rec.ts <= VOICE_PIC_TTL) replyId = rec.id;
         }
         if (!replyId) return false;
 
