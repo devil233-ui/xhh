@@ -17,6 +17,8 @@ import moment from "moment";
 import {
     Restart
 } from "../../other/restart.js";
+// 凭据换取（通行证三件套 → cookie_token/ltoken），与 system/mhy.js、兑换码共用同一实现
+import { exchangeStoken, passRequestHeaders } from "../utils/ckRefresh.js";
 
 const BH3_LEGACY_REGIONS = ["android01", "ios01", "pc01", "bb01", "yyb01", "hun01", "hun02"];
 
@@ -141,6 +143,10 @@ export class user extends plugin {
             return true;
         }
 
+        // 扫码走 APP 端二维码（ma-cn-passport/app/*）。依据上游 xiaoyao-cvs-plugin
+        // 2026-11-20 提交 5597b32b：确认登录时响应里直接给 tokens（stoken/ltoken/token_type），
+        // 再拿通行证三件套去 passport-api 换 cookie_token（utils/ckRefresh.js exchangeStoken）。
+        // 网页端（web/*）只回 Set-Cookie，没有 cookie_token 的账号兜不住，不再是主路。
         let url = "https://passport-api.mihoyo.com/account/ma-cn-passport/app/createQRLogin"; //获取二维码
         // const app_id = 2;
         /**
@@ -154,19 +160,44 @@ export class user extends plugin {
          */
 
         let headers = mhy.getHeaders(e);
+        // 二维码两端点用上游同源的 app pass 头组（含 app_id / device_id / DS）；
+        // GameRoles 仍用 mhy.getHeaders(e) 这套（绑定后 Cookie 由下面填上）。
+        const qrHeaders = passRequestHeaders();
 
         let body = {
             // app_id: app_id,
             // device: headers['x-rpc-device_id'],
         };
-        let res = await mysReq(url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(body),
-        }).then(res => res.json());
+        let res;
+        try {
+            res = await mysReq(url, {
+                method: "POST",
+                headers: qrHeaders,
+                body: JSON.stringify(body),
+            }).then(res => res.json());
+        } catch (err) {
+            logger.error(`[xhh][sm] 获取二维码异常: ${err?.message || err}`);
+            return e.reply("二维码获取失败，请稍后再试", true);
+        }
+        if (!res?.data?.url) {
+            logger.error(`[xhh][sm] 二维码返回异常: ${JSON.stringify(res)}`);
+            return e.reply(`二维码获取失败：${res?.message || res?.retcode || "未知原因"}`, true);
+        }
 
         const sm_url = res.data.url;
-        let ticket = res.data.ticket
+        // 建码响应有时不给 ticket，要从二维码地址里取（上游同样先取 data.ticket、取不到再解析 url）
+        let ticket = res.data.ticket;
+        if (!ticket) {
+            try {
+                ticket = new URL(sm_url).searchParams.get("ticket") || "";
+            } catch {
+                ticket = "";
+            }
+        }
+        if (!ticket) {
+            logger.error(`[xhh][sm] 未解析到 ticket，url 前缀: ${String(sm_url).slice(0, 60)}`);
+            return e.reply("二维码获取失败：未能解析到 ticket", true);
+        }
 
         let img = segment.image(
             (await QR.toDataURL(sm_url)).replace(
@@ -197,14 +228,26 @@ export class user extends plugin {
         }); //进入CD
 
 
+        let rawRes;
         for (var n = 1; n < 150; n++) {
             await sleep(1000);
-            res = await mysReq(url, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(body),
-            }).then(res => res.json());
-            if (res.retcode != 0) return e.reply("二维码已过期~", true);
+            try {
+                rawRes = await mysReq(url, {
+                    method: "POST",
+                    headers: qrHeaders,
+                    body: JSON.stringify(body),
+                });
+                res = await rawRes.json();
+            } catch (err) {
+                logger.error(`[xhh][sm] 查询二维码状态异常: ${err?.message || err}`);
+                return e.reply("二维码状态查询失败，请稍后再试", true);
+            }
+            // retcode 非 0 不一定就是过期：风控（-3503）、二维码失效（-3501）都走这条，
+            // 把服务端原话带给用户，别再一律报"已过期"。
+            if (res?.retcode != 0) {
+                logger.error(`[xhh][sm] 查询二维码状态失败 retcode:${res?.retcode} ${res?.message || ""}`);
+                return e.reply(`扫码登录失败：${res?.message || "二维码已过期"}`, true);
+            }
             if (res.data.status == "Init") continue;
             if (res.data.status == "Scanned" && !zt) {
                 zt = true;
@@ -213,29 +256,68 @@ export class user extends plugin {
             }
             if (res.data.status == "Confirmed") {
 
-                //SToken
-                const SToken = (
-                    res.data.tokens.find(i => i.name === "stoken" || i.name === "stoken_v2") ||
-                    res.data.tokens[0]
-                )?.token
-                //stuid
-                const stuid = res.data.user_info.aid || res.data.user_info.uid || res.data.user_info.account_id
-                //mid
-                const mid = res.data.user_info.mid;
+                // 上游做法：tokens 按 name / token_type 认（1=stoken 2=ltoken 4=cookie_token），
+                // 认不到就别拿 tokens[0] 顶替——那会把 ltoken 当 stoken 用。
+                const tokens = Array.isArray(res.data.tokens) ? res.data.tokens : [];
+                const pickToken = (names, type) => {
+                    const hit = tokens.find(
+                        i => i?.token && (names.includes(i.name) || Number(i.token_type) === type)
+                    );
+                    return hit?.token || "";
+                };
+                const SToken = pickToken(["stoken_v2", "stoken"], 1);
+                const tokenLtoken = pickToken(["ltoken_v2", "ltoken"], 2);
+                const stuid =
+                    res.data.user_info?.aid ||
+                    res.data.user_info?.uid ||
+                    res.data.user_info?.account_id;
+                const mid = res.data.user_info?.mid;
 
-                //用SToken获取cookie
-                const ck = `stuid=${stuid};stoken=${SToken};mid=${mid};`;
+                if (!SToken || !stuid) {
+                    logger.error(`[xhh][sm] 扫码返回信息不完整 retcode:${res?.retcode} tokens:${tokens.length}`);
+                    return e.reply("扫码登录返回信息不完整，未能获取 stoken", true);
+                }
 
-                headers.Cookie = ck;
-                const {
-                    sendMsg,
-                    ltoken
-                } = await mhy.refresh_cookies(
-                    e,
-                    headers,
-                    SToken,
-                    stuid
+                // 网页端/部分场景的响应头还会带 Set-Cookie，作为兜底认一次
+                const setCookies = (typeof rawRes?.headers?.getSetCookie === "function"
+                    ? rawRes.headers.getSetCookie()
+                    : []).map(i => String(i).split(";")[0]);
+                const pickCookie = (name) => {
+                    const hit = setCookies.find(i => i.startsWith(name + "="));
+                    return hit ? hit.slice(name.length + 1) : "";
+                };
+
+                // 用通行证三件套换 cookie_token（+ 响应里没给的 ltoken）
+                const ex = await exchangeStoken({ stuid, stoken: SToken, mid });
+                const cookieToken = ex.cookieToken || pickCookie("cookie_token");
+                const ltokenFinal = tokenLtoken || ex.ltoken || pickCookie("ltoken");
+                const ltuidFinal = stuid || pickCookie("ltuid") || pickCookie("account_id");
+                logger.mark(
+                    `[xhh][sm] 换票结果 cookie=${ex.retcodes.cookieToken} ltoken=${ex.retcodes.ltoken} ` +
+                    `tokens:${tokens.map(i => i.token_type ?? i.name).join(",") || "(空)"}`
                 );
+
+                let sendMsg = [];
+                let ltoken = "";
+                if (!cookieToken || !ltokenFinal) {
+                    logger.error(`[xhh][sm] 换取ck失败 cookie=${ex.retcodes.cookieToken} ltoken=${ex.retcodes.ltoken}`);
+                    return e.reply(
+                        `获取ck失败：扫码成功但凭据换取被拒（cookie:${ex.retcodes.cookieToken} ltoken:${ex.retcodes.ltoken}），请稍后重试`,
+                        true
+                    );
+                }
+                if (!e.no_reply) e.no_reply = e.reply;
+                e.reply = msg => { sendMsg.push(msg); };
+                e.msg = `ltoken=${ltokenFinal};ltuid=${ltuidFinal};cookie_token=${cookieToken}`;
+                headers.Cookie = e.msg;
+                try {
+                    const userck = (await import(`file://${process.cwd()}/plugins/genshin/model/user.js`)).default;
+                    e.ck = e.msg;
+                    await new userck(e).bing();
+                } catch (err) {
+                    logger.error(`[xhh][sm] CK 入库失败: ${err?.message || err}`);
+                }
+                ltoken = ltokenFinal;
                 if (SToken && stuid && mid && ltoken) {
                     res = await api(e, {
                         type: "GameRoles",

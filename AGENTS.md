@@ -79,6 +79,14 @@
 - **国服没有任何面向用户的兑换页**：2026-11-06 实测 `webstatic.mihoyo.com/bbs/event/cdkey/index.html`、同站 `/ys/event/`、`/common/`、`/app/community-game-fe/cdkey/`、老域名 `bbs.mihoyo.com/bbs/event/`、`www.miyoushe.com/bbs/event/` 与 `act.mihoyo.com/event/cdkey/` 全部 404；同一天用 adb 遍历米游社 App（「我的」七宫格 = 兑换中心/创作中心/米游铺/奇匠中心/米游币/游戏中心/支付中心、星铁工具箱全项、工具集合页「其他工具」横滑到底）也没有任何兑换码入口。**国服入口只有游戏内「设置→账户→兑换码」**。`webExchangeCdkey` 我们能直接调通（见上条），但它对应的官方前端入口找不到，不要再去找「网页版兑换页」，它不存在。网页兑换只有**国际服**有：`https://www.hoyolab.com/redeem`（实测 200，对应接口是 `webExchangeCdkeyHyl`，host 形如 `sg-hk4e-api.hoyolab.com`，与国服的 `webExchangeCdkey` 不是同一套）。
 - **`Cookie` 等于账号登录态**（`ltuid` + `cookie_token`/`stoken`），兑换请求必须带；日志与报错里不得打印 Cookie 原文。
 
+- **上游同步（2026-11-20 对齐 `qsyhh/xiaoyao-cvs-plugin` 的 `5597b32b`「修复通行证扫码登录与凭据换取」）**：兑换码侧只同步了两点——`requestJson` 的超时/abort 报错统一带上域名（否则只有「请求已取消」，定位不到是哪个接口），以及 `getAutoCodes` 的 `refreshCode` 失败按「非直播期正常」处理并只 warn。`temp/handler-check.mjs` 可在没有锅巴 token 时直接给 handler 喂消息（只跑状态/帮助/非法码等只读分支），比沙盒快。
+
+## 扫码登录（apps/user.js 的 sm()，2026-11-20 起走 app 端端点）
+
+- 端点来自上游 `5597b32b`：建码 `POST https://passport-api.mihoyo.com/account/ma-cn-passport/app/createQRLogin`、查状态 `.../app/queryQRLoginStatus`，`app_id=ddxf5qt290cg`；header 带 `x-rpc-app_id`、`x-rpc-client_type: 2`、`x-rpc-device_id`（取自 `utils/ckRefresh.js` 的 `genDeviceId()`）。建码响应里的 ticket 是 `ticket_token`，不是网页端的 `ticket`；确认后用 `token` 字段换成 stoken/ltoken 再走 `stokenToCookie`。
+- **设备身份必须持久化**（redis `xhh:qrdev`），每次新建就随机会踩坑：扫码确认瞬间接口判「新设备」直接 `-3503 环境异常`，表现为二维码扫了但永远失败。走 WARP 换出口前后也用同一个 device_id。
+- 失败判据：`-3503` = 设备/头/IP 风控（先查 device_id 是否稳定、header 是否齐全）；`-3501` = 二维码过期（重新 `#扫码登录`）；`-464` = 需要人机验证（换出口重试）。别把这些一律当「接口改了」。
+
 ## 沙盒验证（改完必跑）
 
 判定只看 `result.replies` 里有没有内容；`hit` 只说明规则接住了，规则接住后抛错或提前 return 一样没有回复。完整 12 条在上级 `/root/Yunzai/AGENTS.md` 的「沙盒验证纪律」小节（第 105–127 行），这里只列三条最容易踩空的：

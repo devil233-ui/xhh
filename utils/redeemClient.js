@@ -70,11 +70,18 @@ export function parseCommand(msg) {
 export async function requestJson(url, options = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 20000)
+  const host = String(url).replace(/^https?:\/\//, '').split('/')[0]
   try {
-    const res = await mysReq(url, { ...options, signal: controller.signal })
-    if (!res?.ok) throw new Error(`HTTP ${res?.status}`)
+    let res
+    try {
+      res = await mysReq(url, { ...options, signal: controller.signal })
+    } catch (err) {
+      // 超时/abort 的 err.message 只有「请求已取消」，带上域名才定位得到是哪个接口
+      throw new Error(`${host} ${err?.message || err}`)
+    }
+    if (!res?.ok) throw new Error(`${host} HTTP ${res?.status}`)
     const data = await res.json()
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('接口返回格式异常')
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${host} 接口返回格式异常`)
     return data
   } finally {
     clearTimeout(timer)

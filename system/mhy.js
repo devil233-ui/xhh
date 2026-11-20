@@ -5,6 +5,9 @@ import lodash from "lodash";
 import fs from "fs";
 import YAML from "yaml";
 import { yaml, api, config } from "#xhh";
+// 凭据换取（stoken → cookie_token / ltoken）统一走 utils/ckRefresh.js：
+// 通行证三件套放 Cookie 头 + passport-api + pass 头组（含出口风控时的 WARP 兜底）
+import { exchangeStoken, parseStokenParts, cookiePart } from "../utils/ckRefresh.js";
 
 class mhy {
   // 服务器代码 → 中文名。getServerName() 用。
@@ -149,19 +152,17 @@ class mhy {
 
   //刷新ck
   async refresh_cookies(e, headers, SToken, id) {
-    //用SToken获取cookie_token和ltoken(v1)
-    let urls = [
-      `https://api-takumi.mihoyo.com/auth/api/getCookieAccountInfoBySToken?stoken=${SToken}&uid=${id}`,
-      "https://passport-api.mihoyo.com/account/auth/api/getLTokenBySToken",
-    ];
-    let res, Cookie, ltoken;
-    for (let url of urls) {
-      res = await mysReq(url, { method: "GET", headers }).then(res =>
-        res.json()
-      );
-      if (res.data?.cookie_token) Cookie = res.data?.cookie_token;
-      if (res.data?.ltoken) ltoken = res.data?.ltoken;
-    }
+    // SToken 可能是裸 stoken，也可能是 `stuid=..;stoken=..;mid=..;` 整串，统一拆成三件套；
+    // mid 缺失时从调用方传进来的 Cookie 里补（v2 stoken 缺 mid 会回 -100）
+    const parts = parseStokenParts(SToken);
+    const callerCk = headers?.Cookie || headers?.cookie || "";
+    const stuid = parts.stuid || cookiePart(callerCk, "stuid") || String(id || "");
+    const mid = parts.mid || cookiePart(callerCk, "mid");
+    const { cookieToken: Cookie, ltoken } = await exchangeStoken({
+      stuid,
+      stoken: parts.stoken,
+      mid,
+    });
     if (!e.no_reply) e.no_reply = e.reply;
     let sendMsg = [];
     e.reply = msg => {
