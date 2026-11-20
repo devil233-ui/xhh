@@ -91,7 +91,16 @@ export class video extends plugin {
     if (getother().bh3) await redis.del("xhh_vid:bh3");
     if (getother().by) await redis.del("xhh_vid:by");
     if (getother().xbgd) await redis.del("xhh_vid:xbgd");
-    vid(e);
+    // 以前这里没 await，抓取在后台跑，出错就只有一条没人看的 unhandled rejection，
+    // 手动发 #最新视频 的人一直等不到回执（沙盒里直接显示 blocked:noReply）
+    try {
+      await vid(e);
+    } catch (err) {
+      logger.error(`[小花火米哈游视频] 手动触发失败：${err?.message || err}`);
+      try {
+        await e.reply(`拉取米哈游最新视频失败：${err?.message || err}`);
+      } catch { /* 回执发不出去就算了，日志里已有原因 */ }
+    }
   }
 }
 
