@@ -66,11 +66,72 @@ export function parseCommand(msg) {
   return { game, action: 'redeem', codes }
 }
 
-/** 统一请求：20 秒超时，非 2xx 与结构异常都抛错，调用方决定兜底 */
+/** 兑换域名不走节点优选：实测直连 DNS 顺序 0.6~0.9s 就通，而 mysFetch 的「16 节点探测 + 3×8s 换节点」
+ *  曾把 20s 预算耗光、让请求自己被 abort（2026-11-21 线上 zzz 兑换事故）。失败时换本机 WARP 出口
+ *  再试一次，只做一跳兜底，不叠业务重试链。 */
+const REDEEM_HOSTS = new Set(Object.values(GAMES).map(g => new URL(g.host).hostname))
+// 本机 warp-http-bridge.service 把 WARP 的 SOCKS5 桥成 HTTP CONNECT，监听 8118（与 ckRefresh 同一个桥）
+const WARP_PROXY = process.env.XHH_WARP_PROXY || 'http://127.0.0.1:8118'
+/** 兑换请求预算：官方接口正常 0.4~0.9s 返回，留到 25s 只为兜住偶发抖动 */
+const REDEEM_TIMEOUT = 25000
+
+/** 直连（系统 DNS 顺序，不经节点优选） */
+async function directJson(url, { method = 'GET', headers, body } = {}) {
+  const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(REDEEM_TIMEOUT) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('接口返回格式异常')
+  return data
+}
+
+/** 换 WARP 出口重试（本机 8118 桥，证据见 ckRefresh 的 WARP 段） */
+async function warpJson(url, { method = 'GET', headers, body } = {}) {
+  const [{ HttpsProxyAgent }, https] = await Promise.all([
+    import('https-proxy-agent'),
+    import('node:https'),
+  ])
+  const agent = new HttpsProxyAgent(WARP_PROXY)
+  return await new Promise((resolve, reject) => {
+    const req = https.request(url, { method, headers, agent, timeout: REDEEM_TIMEOUT }, (res) => {
+      let buf = ''
+      res.setEncoding('utf8')
+      res.on('data', c => (buf += c))
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error(`HTTP ${res.statusCode}`))
+        try {
+          const data = JSON.parse(buf)
+          if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('结构异常')
+          resolve(data)
+        } catch (err) {
+          reject(new Error(err?.message === '结构异常' ? '接口返回格式异常' : `解析失败 ${buf.slice(0, 80)}`))
+        }
+      })
+    })
+    req.on('timeout', () => req.destroy(new Error(`等待响应超时（${REDEEM_TIMEOUT}ms）`)))
+    req.on('error', reject)
+    if (body !== undefined && body !== null) req.write(body)
+    req.end()
+  })
+}
+
+/** 统一请求：兑换域名直连 + WARP 兜底；其余接口照旧走 mysReq（节点优选，20s 超时） */
 export async function requestJson(url, options = {}) {
+  const host = String(url).replace(/^https?:\/\//, '').split('/')[0]
+  if (REDEEM_HOSTS.has(host)) {
+    try {
+      return await directJson(url, options)
+    } catch (err) {
+      const first = err?.message || String(err)
+      globalThis.logger?.warn?.(`[xhh][兑换码] ${host} 直连失败（${first}），改走 WARP 出口重试一次`)
+      try {
+        return await warpJson(url, options)
+      } catch (err2) {
+        throw new Error(`${host} 直连失败（${first}），WARP 也失败（${err2?.message || err2}）`)
+      }
+    }
+  }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 20000)
-  const host = String(url).replace(/^https?:\/\//, '').split('/')[0]
   try {
     let res
     try {
