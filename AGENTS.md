@@ -114,3 +114,11 @@
   只缓存 GET 且不带 Cookie/DS/x-rpc-* 的请求；单条 2MB 上限；文件超 3000 个按最旧 20% 清理。
 - 取数失败时会回退本地旧副本（日志 `[xhh][cache] ... 改用本地缓存兜底`），所以图鉴在 CDN 抽风时仍可用。
 - 想强制刷新：删掉该 URL 对应的缓存文件，或清空整个 `data/cache/http/` 目录。
+
+## 米游社视频（`apps/video.js`，#最新视频）
+
+- **插件只发链接，不搬视频本体**：`post/wapi/userPost` 拿帖子列表 → 取 `vod_list[0].resolutions` 里最后一档的 url 写进消息文本，封面用 `Bot.download` 落一张图。服务端流量只有「137KB 的列表 + 3MB 封面」。
+- 三条网络路径实测（2026-11-21，`temp/video-bench.mjs`，各 3 轮取均值）：列表 JSON 直连 294ms / 节点优选 176ms / WARP 1484ms；封面 3.1MB 直连 1177ms（≈2.6MB/s）/ WARP 4289ms；视频前 1MB 直连 672ms / 节点优选 1125ms / WARP 3045ms。结论：**别让 WARP 参与视频链路**，它慢 2~8 倍；直连就够，节点优选只在主接口偶发连不上时才有价值。
+- **不要用 `mysReq` 拉视频本体**：`lib/common/mys.js` 用 `Buffer.concat(chunks)` 收完整 body（无流式），一段 12MB 的 1080P 视频会整段驻留内存。将来若要「bot 自己下视频再发」，必须用原生 fetch 流式落盘，并且只直连。
+- **封面按帖子 id 落盘（2026-11-21 修串图）**：以前是固定名 `temp/<游戏>视频封面.jpg`，三处会串：①`common.downFile` 失败只 `return false` 不抛错，代码不校验 → 发出上一期那张旧图；②封面不在 `upload-bbs` 域名时 `if` 整段跳过，`path` 留着上一个游戏的文件名；③手动 `#最新视频` 与 3 分钟定时并发写同一路径互相覆盖。现在写成 `temp/videos/<游戏>_<post_id>.jpg`，下载后校验 `存在 + 大小>0` 才 `segment.image`，否则**该条不附封面**只发文字并 `logger.warn`（绝不拿旧图凑）；`vid()` 外面套了 `xhh_vid:lock`（`SET NX EX 300`）互斥，上一轮没跑完时直接跳过；每轮开始清 3 天前的旧封面。
+- 验证脚本：`temp/video-check.mjs` 跑三轮——正常轮（6 个图段、文件名带 post_id）、强制下载失败轮（0 图段 + 6 条 warn）、锁被占轮（秒返回并提示跳过）。注意 `task.fnc` 调用 `vid()` 不带 `e`，走的是 `Bot.pickGroup(...).sendMsg` 分支，抓图段要从合并转发节点里深走。

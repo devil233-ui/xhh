@@ -1,5 +1,6 @@
 import mysReq from '../utils/mysReq.js';
 import fetch from "node-fetch";
+import fs from "node:fs";
 import common from "../../../lib/common/common.js";
 import lodash from "lodash";
 import { yaml, makeForwardMsg, sleep, config, pluginPriority } from "#xhh";
@@ -16,6 +17,14 @@ const videoApiHosts = [
   "https://bbs-api.miyoushe.com",
   "https://bbs-api.mihoyo.com",
 ]
+
+/** 封面按帖子 id 落盘：曾用固定文件名（<游戏>视频封面.jpg），下载失败时会把上一期的图发出去 */
+const COVER_DIR = "./plugins/xhh/temp/videos"
+/** 封面保留 3 天，够一轮对比又不至于把 temp 堆满 */
+const COVER_KEEP_MS = 3 * 24 * 3600 * 1000
+/** 手动 #最新视频 与 3 分钟定时会撞同一批文件，用 redis 锁让两者串行 */
+const VIDEO_LOCK_KEY = "xhh_vid:lock"
+const VIDEO_LOCK_TTL = 300
 
 // 米游社接口偶发连接超时；每个账号独立失败，避免中断整轮播报。
 async function fetchVideoFeed(uid, name) {
@@ -86,7 +95,44 @@ export class video extends plugin {
   }
 }
 
+/** 清掉过期的封面文件（按 post_id 命名的那些） */
+function sweepCovers() {
+  try {
+    if (!fs.existsSync(COVER_DIR)) return
+    const now = Date.now()
+    for (const file of fs.readdirSync(COVER_DIR)) {
+      const full = `${COVER_DIR}/${file}`
+      try {
+        if (now - fs.statSync(full).mtimeMs > COVER_KEEP_MS) fs.unlinkSync(full)
+      } catch { /* 单个文件拿不到状态不影响整轮 */ }
+    }
+  } catch (err) {
+    logger.warn(`[小花火米哈游视频] 清理旧封面失败：${err?.message || err}`)
+  }
+}
+
+/** 同一时刻只允许一轮：手动 #最新视频 与定时任务共用封面目录，并发会互相覆盖 */
 async function vid(e) {
+  let locked = false
+  try {
+    locked = (await redis.set(VIDEO_LOCK_KEY, String(process.pid), { EX: VIDEO_LOCK_TTL, NX: true })) === "OK"
+  } catch (err) {
+    logger.warn(`[小花火米哈游视频] 取锁失败，按无锁继续：${err?.message || err}`)
+    locked = true
+  }
+  if (!locked) {
+    logger.warn("[小花火米哈游视频] 上一轮还没跑完，跳过本次")
+    return true
+  }
+  try {
+    sweepCovers()
+    return await runVid(e)
+  } finally {
+    try { await redis.del(VIDEO_LOCK_KEY) } catch { /* 锁到期会自动释放 */ }
+  }
+}
+
+async function runVid(e) {
   let groups = config().groups;
   if ((!groups?.length || !Array.isArray(groups)) && !e?.reply) return true;
   //原神，星铁，绝区零
@@ -108,7 +154,6 @@ async function vid(e) {
     time = 1,
     subject,
     content,
-    img,
     vid_url,
     res,
     vod_list,
@@ -116,8 +161,7 @@ async function vid(e) {
     ti,
     msgs = [],
     msgs_indexs = {},
-    names = "",
-    path;
+    names = "";
   //遍历游戏官号
   for (let i in urls) {
     let msg;
@@ -172,30 +216,42 @@ async function vid(e) {
 
         // content=JSON.parse(list[n].post.structured_content)[0].insert
 
-        //封面
-        img = list[n].post.cover;
-        //QQ不支持直接发https://upload-bbs.miyoushe.com/
-        if (img.includes("https://upload-bbs.miyoushe.com/")) {
-          path = `./plugins/xhh/temp/${name}视频封面.jpg`;
-          //封面图是否原图
-          if (getother().cover) await common.downFile(img, path);
-          else
-            await common.downFile(
-              img + "?x-oss-process=image//resize,p_30",
-              path
+        //封面：一条帖子一个文件，下载失败宁可不带图，也不拿上一期那张顶替
+        const coverUrl = String(list[n].post.cover || "");
+        const postId = list[n].post.post_id || String(list[n].post.created_at || time);
+        let coverSeg = null;
+        if (coverUrl) {
+          try {
+            fs.mkdirSync(COVER_DIR, { recursive: true });
+            const coverFile = `${COVER_DIR}/${name}_${postId}.jpg`;
+            //封面图是否原图
+            const coverSrc = getother().cover
+              ? coverUrl
+              : `${coverUrl}?x-oss-process=image//resize,p_30`;
+            const saved = await common.downFile(coverSrc, coverFile);
+            const coverBytes = saved === false || !fs.existsSync(coverFile)
+              ? 0
+              : fs.statSync(coverFile).size;
+            if (coverBytes > 0) coverSeg = segment.image(coverFile);
+            else
+              logger.warn(
+                `[小花火米哈游视频] ${name}「${subject}」封面下载失败，本条不附封面：${coverSrc}`
+              );
+          } catch (err) {
+            logger.warn(
+              `[小花火米哈游视频] ${name}「${subject}」封面处理异常，本条不附封面：${err?.message || err}`
             );
+          }
         }
-        img = segment.image(path);
         //我们合体(˃ ⌑ ˂
         msg = [
           `游戏：${name}\n\n`,
           `标题：${subject}\n\n`,
           `发布时间：${time}\n\n`,
           `画质大小：${p}  ${size}\n\n`,
-          "封面：\n",
-          img,
-          `\n\n视频链接(点击即可观看)：\n${vid_url}`,
         ];
+        if (coverSeg) msg.push("封面：\n", coverSeg, "\n\n");
+        msg.push(`视频链接(点击即可观看)：\n${vid_url}`);
         //处理内容过长
         msgs_indexs[i] = []
         if (content.length < 600) {
