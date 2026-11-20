@@ -88,6 +88,8 @@
 - **换票链路（2026-11-21 实测重写）**：`account/auth/api/getCookieAccountInfoBySToken` 与 `getLTokenBySToken` 对这条 stoken 已基本关闭——同一 stoken 换头组、去掉/保留 DS、换 app_version（2.112→3.0.0）、换出口 IP（WARP）都是 `-464`／`1002`，既不是设备也不是风控。改用会话交换：`POST https://passport-api.mihoyo.com/account/ma-cn-session/app/exchange`，body `{src_token:{token:<stoken>,token_type:1}, mid, dst_token_type}`，`4` 换 cookie_token、`2` 换 ltoken，**mid 必填**（缺了回 `-3001 参数不合法`）。老接口只留兜底。
 - 失败判据：`-3503` = 设备/头/IP 风控（先查 device_id 是否稳定、header 是否齐全）；`-3501` = 二维码过期（重新 `#扫码登录`）；`-3001` = 换票缺 mid；`-464`／`1002` 在**换票**上基本等于「走了老接口」，不代表人机验证；`-100` = 这条 stoken 本身失效。别一律当「接口改了」。
 - 验证脚本：`temp/exchange-check.mjs <QQ> [uid] [--full]` 只换票不发码（`--full` 再用 `stokenToCookie` 拼 ck 查一次绑定角色）；换票调试优先用它，别拿主号反复试。
+- **角色列表不能用 stoken 版**：`api(e,{type:"GameRoles"})` 打的是 `getUserGameRolesByStoken`，对 app 端换来的 v2 stoken 恒回 `-10001 invalid request`（`res.data` 为空 → `Cannot read properties of undefined (reading 'list')`，2026-11-21 线上崩过一次）。改用 `https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie`（不带 `game_biz` 就一次列出全部游戏角色，只认 Cookie、不需要 DS），并对空列表兜底提示「ck 已保存，稍后 #刷新ck」。`temp/roles-check.mjs <QQ> <uid>` 对比两个接口的 retcode 与角色数。
+- 二维码窗口 3 分钟：提示语、`reply_recallMsg` 撤回时间、轮询上限（`n <= 180`）三处要一起改，漏一处就会出现「提示说3分钟、消息1分钟就撤了」。
 
 ## 沙盒验证（改完必跑）
 

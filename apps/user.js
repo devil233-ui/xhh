@@ -209,11 +209,11 @@ export class user extends plugin {
         const re = await reply_recallMsg(
             e,
             [
-                "请在60秒内使用手机米游社扫码登录",
+                "请在3分钟内使用手机米游社扫码登录",
                 img,
                 "谁触发谁扫码,请不要帮别人绑定自己的米游社！！！",
             ],
-            60,
+            180,
             true
         );
         if (re.data?.message_id) re.message_id = re.data.message_id;
@@ -229,7 +229,8 @@ export class user extends plugin {
 
 
         let rawRes;
-        for (var n = 1; n < 150; n++) {
+        // 3 分钟窗口，与外面「请在3分钟内…」的提示和 180 秒撤回保持一致
+        for (var n = 1; n <= 180; n++) {
             await sleep(1000);
             try {
                 rawRes = await mysReq(url, {
@@ -319,10 +320,21 @@ export class user extends plugin {
                 }
                 ltoken = ltokenFinal;
                 if (SToken && stuid && mid && ltoken) {
-                    res = await api(e, {
-                        type: "GameRoles",
-                        headers: headers
+                    // 角色列表走 Cookie 版：getUserGameRolesByStoken 对 app 端拿到的 v2 stoken
+                    // 恒回 -10001 invalid request（2026-11-21 实测），而 byCookie 不传 game_biz
+                    // 就能一次列出全部游戏角色，且只认 Cookie、不需要 DS。
+                    const rolesRes = await mysReq(
+                        "https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie",
+                        {
+                            method: "GET",
+                            headers: { Cookie: e.msg },
+                            signal: AbortSignal.timeout(15000)
+                        }
+                    ).then(r => r.json()).catch(err => {
+                        logger.error(`[xhh][sm] 拉取角色列表异常: ${err?.message || err}`);
+                        return {};
                     });
+                    const roleList = Array.isArray(rolesRes?.data?.list) ? rolesRes.data.list : [];
                     let data_ = {};
                     /*
                     hk4e_cn国服原神
@@ -331,7 +343,16 @@ export class user extends plugin {
                     bh3_cn国服崩坏3
                     */
                     const game_list = [ "hk4e_cn", "hkrpg_cn", "nap_cn", "bh3_cn" ];
-                    res.data.list.map(v => {
+                    if (!roleList.length) {
+                        logger.error(
+                            `[xhh][sm] 角色列表为空 retcode:${rolesRes?.retcode} ${rolesRes?.message || ""}`
+                        );
+                        sendMsg.push(
+                            `ck 已保存，但没拉到角色列表（retcode:${rolesRes?.retcode ?? "网络异常"}），` +
+                            `稍后发「#刷新ck」可重试`
+                        );
+                    }
+                    roleList.map(v => {
                         if (game_list.includes(v.game_biz)) {
                             data_[v.game_uid] = {
                                 uid: v.game_uid,
