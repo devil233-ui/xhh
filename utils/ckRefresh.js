@@ -2,10 +2,13 @@ import mysReq from './mysReq.js';
 /**
  * stoken → 完整 ck 的内部兑换（供兑换码补凭证、ck 失效自愈、#刷新ck 共用）
  *
- * 兑换实现按 xiaoyao-cvs-plugin 2026-11-20 的提交 5597b32b（“修复通行证扫码登录与凭据换取”）：
- * getCookieAccountInfoBySToken / getLTokenBySToken 现在读的是 **Cookie 头里的通行证三件套**
- * （stuid / stoken / mid），`query` 留空，host 走 passport-api，头用 app 端 pass 组（含 DS2，盐 passSalt）。
- * 旧写法（stoken 拼 query + api-takumi + rtvT… 盐的 DS）会回 -100 登录状态失效 / -464。
+ * 兑换实现分两路，主路认 passport-api 的会话交换，老接口只作兜底：
+ *   · 主路 `ma-cn-session/app/exchange`（app 端会话交换）：body 送 src_token(stoken) + mid +
+ *     dst_token_type，`4` 换 cookie_token、`2` 换 ltoken；mid 必填，缺了直接 -3001 参数不合法。
+ *   · 兜底 `account/auth/api/getCookieAccountInfoBySToken` / `getLTokenBySToken`：这两条老接口
+ *     对这条 stoken 已基本关闭（实测恒回 -464 / 1002，换头组、换 app_version、换出口 IP 都不变），
+ *     只在主路失败时试一次，留作兼容。
+ * 头组用 app 端 pass 组（含 DS2，盐 passSalt），Cookie 传通行证三件套（stuid / stoken / mid）。
  */
 
 import fs from 'fs'
@@ -81,9 +84,14 @@ export function passRequestHeaders(cookie = '') {
   }
 }
 
-async function passGetJson(url, headers, viaWarp = false) {
+/**
+ * 通行证接口统一出口：method/body 由调用方给，viaWarp 时走本机 WARP 桥。
+ * 失败一律折成 {retcode:'NETWORK'|'PARSE'} 返回，不抛异常——换票是尽力而为的补票。
+ */
+async function passRequest(url, { method = 'GET', headers, body, viaWarp = false } = {}) {
+  const payload = body === undefined ? undefined : JSON.stringify(body)
   if (!viaWarp) {
-    return await mysReq(url, { method: 'GET', headers, signal: AbortSignal.timeout(12000) })
+    return await mysReq(url, { method, headers, body: payload, signal: AbortSignal.timeout(12000) })
       .then((r) => r.json())
       .catch((err) => ({ retcode: 'NETWORK', message: err?.message || String(err) }))
   }
@@ -93,7 +101,7 @@ async function passGetJson(url, headers, viaWarp = false) {
   ])
   const agent = new HttpsProxyAgent(WARP_PROXY)
   return await new Promise((resolve) => {
-    const req = https.request(url, { method: 'GET', headers, agent, timeout: 15000 }, (res) => {
+    const req = https.request(url, { method, headers, agent, timeout: 15000 }, (res) => {
       let buf = ''
       res.setEncoding('utf8')
       res.on('data', (c) => (buf += c))
@@ -107,8 +115,22 @@ async function passGetJson(url, headers, viaWarp = false) {
     })
     req.on('timeout', () => req.destroy(new Error('WARP 请求超时')))
     req.on('error', (err) => resolve({ retcode: 'NETWORK', message: err?.message || String(err) }))
+    if (payload) req.write(payload)
     req.end()
   })
+}
+
+/** 直连被判风控时换 WARP 出口重试一次，仍不做业务重试链 */
+async function passCall(url, opts) {
+  const res = await passRequest(url, opts)
+  if (!RISK_RETCODES.has(res?.retcode)) return res
+  const viaWarp = await passRequest(url, { ...opts, viaWarp: true })
+  if (typeof logger !== 'undefined' && !RISK_RETCODES.has(viaWarp?.retcode)) {
+    logger.mark(
+      `[xhh][ckRefresh] ${url.split('/').pop()} 直连被判风控(${res.retcode})，改走 WARP 出口 retcode=${viaWarp?.retcode}`,
+    )
+  }
+  return viaWarp
 }
 
 /** 把 stoken 的两种存法（裸 stoken / `stuid=..;stoken=..;mid=..;`）统一拆成三件套 */
@@ -124,36 +146,54 @@ export function parseStokenParts(raw = '') {
 
 /**
  * 用通行证三件套换 cookie_token 与 ltoken。
+ * 主路：会话交换（dst 4 → cookie_token，dst 2 → ltoken，mid 必填）；
+ * 主路失败再试老接口一次，仍失败时 retcode 报主路的值（老接口的 -464/1002 已经不说明问题）。
  * @returns {Promise<{cookieToken:string, ltoken:string, retcodes:object}>}
  */
 export async function exchangeStoken({ stuid, stoken, mid } = {}) {
   const out = { cookieToken: '', ltoken: '', retcodes: {} }
   if (!stuid || !stoken) return out
   const cookie = `stuid=${stuid};stoken=${stoken};${mid ? `mid=${mid};` : ''}`
+  const headers = passRequestHeaders(cookie)
   const jobs = [
-    ['cookieToken', 'getCookieAccountInfoBySToken'],
-    ['ltoken', 'getLTokenBySToken'],
+    ['cookieToken', 4, 'getCookieAccountInfoBySToken'],
+    ['ltoken', 2, 'getLTokenBySToken'],
   ]
-  for (const [key, api] of jobs) {
-    const url = `${PASS_API}/account/auth/api/${api}`
-    const headers = passRequestHeaders(cookie)
-    let res = await passGetJson(url, headers, false)
-    if (RISK_RETCODES.has(res?.retcode)) {
-      const viaWarp = await passGetJson(url, headers, true)
-      if (typeof logger !== 'undefined' && !RISK_RETCODES.has(viaWarp?.retcode)) {
-        logger.mark(
-          `[xhh][ckRefresh] ${api} 直连被判风控(${res.retcode})，改走 WARP 出口 retcode=${viaWarp?.retcode}`,
-        )
-      }
-      res = viaWarp
+  for (const [key, dst, legacyApi] of jobs) {
+    let token = ''
+    let code
+    if (mid) {
+      const res = await passCall(`${PASS_API}/account/ma-cn-session/app/exchange`, {
+        method: 'POST',
+        headers,
+        body: { src_token: { token: stoken, token_type: 1 }, mid, dst_token_type: dst },
+      })
+      code = res?.retcode
+      token = res?.data?.token?.token || ''
     }
-    out.retcodes[key] = res?.retcode
-    if (key === 'cookieToken') out.cookieToken = res?.data?.cookie_token || ''
-    else out.ltoken = res?.data?.ltoken || res?.data?.token?.token || ''
+    if (!token) {
+      const legacy = await passCall(`${PASS_API}/account/auth/api/${legacyApi}`, {
+        method: 'GET',
+        headers,
+      })
+      const legacyToken =
+        key === 'cookieToken'
+          ? legacy?.data?.cookie_token || ''
+          : legacy?.data?.ltoken || legacy?.data?.token?.token || ''
+      if (legacyToken) {
+        token = legacyToken
+        code = legacy?.retcode
+      } else if (code === undefined) {
+        code = legacy?.retcode
+      }
+    }
+    out.retcodes[key] = code
+    if (key === 'cookieToken') out.cookieToken = token
+    else out.ltoken = token
   }
   if (typeof logger !== 'undefined' && (!out.cookieToken || !out.ltoken)) {
     logger.warn(
-      `[xhh][ckRefresh] 换票未拿全 cookie=${out.retcodes.cookieToken} ltoken=${out.retcodes.ltoken}`,
+      `[xhh][ckRefresh] 换票未拿全 cookie=${out.retcodes.cookieToken} ltoken=${out.retcodes.ltoken}${mid ? '' : '（缺 mid，只能走老接口）'}`,
     )
   }
   return out

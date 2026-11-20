@@ -84,8 +84,10 @@
 ## 扫码登录（apps/user.js 的 sm()，2026-11-20 起走 app 端端点）
 
 - 端点来自上游 `5597b32b`：建码 `POST https://passport-api.mihoyo.com/account/ma-cn-passport/app/createQRLogin`、查状态 `.../app/queryQRLoginStatus`，`app_id=ddxf5qt290cg`；header 带 `x-rpc-app_id`、`x-rpc-client_type: 2`、`x-rpc-device_id`（取自 `utils/ckRefresh.js` 的 `genDeviceId()`）。建码响应里的 ticket 是 `ticket_token`，不是网页端的 `ticket`；确认后用 `token` 字段换成 stoken/ltoken 再走 `stokenToCookie`。
-- **设备身份必须持久化**（redis `xhh:qrdev`），每次新建就随机会踩坑：扫码确认瞬间接口判「新设备」直接 `-3503 环境异常`，表现为二维码扫了但永远失败。走 WARP 换出口前后也用同一个 device_id。
-- 失败判据：`-3503` = 设备/头/IP 风控（先查 device_id 是否稳定、header 是否齐全）；`-3501` = 二维码过期（重新 `#扫码登录`）；`-464` = 需要人机验证（换出口重试）。别把这些一律当「接口改了」。
+- 设备身份是 `ckRefresh.js` 的模块级随机常量（`DEVICE_ID/DEVICE_NAME/DEVICE_MODEL`）：同一进程内建码与查状态复用同一个 id 就够，**不需要落 redis**；进程重启换新 id 也无害（实测新 id 建码、查状态、换票全通）。
+- **换票链路（2026-11-21 实测重写）**：`account/auth/api/getCookieAccountInfoBySToken` 与 `getLTokenBySToken` 对这条 stoken 已基本关闭——同一 stoken 换头组、去掉/保留 DS、换 app_version（2.112→3.0.0）、换出口 IP（WARP）都是 `-464`／`1002`，既不是设备也不是风控。改用会话交换：`POST https://passport-api.mihoyo.com/account/ma-cn-session/app/exchange`，body `{src_token:{token:<stoken>,token_type:1}, mid, dst_token_type}`，`4` 换 cookie_token、`2` 换 ltoken，**mid 必填**（缺了回 `-3001 参数不合法`）。老接口只留兜底。
+- 失败判据：`-3503` = 设备/头/IP 风控（先查 device_id 是否稳定、header 是否齐全）；`-3501` = 二维码过期（重新 `#扫码登录`）；`-3001` = 换票缺 mid；`-464`／`1002` 在**换票**上基本等于「走了老接口」，不代表人机验证；`-100` = 这条 stoken 本身失效。别一律当「接口改了」。
+- 验证脚本：`temp/exchange-check.mjs <QQ> [uid] [--full]` 只换票不发码（`--full` 再用 `stokenToCookie` 拼 ck 查一次绑定角色）；换票调试优先用它，别拿主号反复试。
 
 ## 沙盒验证（改完必跑）
 
